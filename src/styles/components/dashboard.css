@@ -1,0 +1,565 @@
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+.dashboard-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  background: var(--bg-gradient);
+  position: relative;
+  animation: dashboardFadeIn 0.5s ease-out;
+}
+
+@keyframes dashboardFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ============================================================
+   DASHBOARD CONTENT
+   ============================================================ */
+.dashboard-content {
+  padding: 32px;
+  animation: contentFadeIn 0.6s ease-out;
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================================
+   WORKSPACE SECTIONS
+   ============================================================ */
+.workspace {
+  animation: workspaceFadeIn 0.5s ease-out;
+}
+
+@keyframes workspaceFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.workspace>* {
+  animation: sectionStaggerIn 0.5s ease-out both;
+}
+
+.workspace>*:nth-child(1) { animation-delay: 0.05s; }
+.workspace>*:nth-child(2) { animation-delay: 0.1s; }
+.workspace>*:nth-child(3) { animation-delay: 0.15s; }
+.workspace>*:nth-child(4) { animation-delay: 0.2s; }
+.workspace>*:nth-child(5) { animation-delay: 0.25s; }
+.workspace>*:nth-child(6) { animation-delay: 0.3s; }
+
+@keyframes sectionStaggerIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 28px;
+  padding: 24px 28px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  position: relative;
+  overflow: hidden;
+  animation: headerSlideIn 0.6s ease-out;
+}
+
+@keyframes headerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dashboard-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--secondary), var(--secondary-light));
+}
+
+.dashboard-header .eyebrow {
+  display: inline-block;
+  padding: 4px 14px;
+  background: rgba(26, 115, 232, 0.06);
+  border-radius: 50px;
+  color: var(--secondary);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  border: 1px solid rgba(26, 115, 232, 0.08);
+}
+
+.dashboard-header h2 {
+  margin: 6px 0 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+/* ============================================================
+   STATS GRID
+   ============================================================ */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stats-grid.compact {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stats-grid article {
+  padding: 20px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transition: var(--transition);
+  cursor: default;
+  position: relative;
+  overflow: hidden;
+}
+
+.stats-grid article::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--secondary), var(--secondary-light));
+  opacity: 0;
+  transition: var(--transition);
+}
+
+.stats-grid article:hover::after {
+  opacity: 1;
+}
+
+.stats-grid article:hover {
+  transform: translateY(-6px);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+}
+
+.stats-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stats-grid strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================================
+   PANEL
+   ============================================================ */
+.panel {
+  padding: 24px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  transition: var(--transition);
+}
+
+.panel:hover {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.06);
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.card-heading h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+.data-card {
+  overflow-x: auto;
+  padding: 0.5rem;
+}
+
+/* Table enhancements */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+table {
+  width: 100%;
+  min-width: 0;
+  border-collapse: separate;
+  border-spacing: 0 8px; /* space between rows */
+}
+
+th, td {
+  text-align: left;
+  padding: 12px 16px;
+  vertical-align: middle;
+  border: none;
+}
+
+th {
+  background: rgba(26, 115, 232, 0.04);
+  font-weight: 600;
+  color: var(--muted);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+tr {
+  background: var(--glass-bg);
+  border-radius: var(--radius);
+  transition: var(--transition);
+}
+
+tr:hover td {
+  background: rgba(26, 115, 232, 0.05);
+  transform: scale(1.01);
+}
+
+/* Responsive split grid */
+@media (max-width: 960px) {
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+
+
+
+th,
+td {
+  padding: 12px 16px;
+  border: none;
+  vertical-align: middle;
+  transition: var(--transition);
+}
+
+/* Fix: make <small> inside table cells render on a new line */
+td small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+th {
+  background: rgba(26, 115, 232, 0.03);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+tr {
+  transition: var(--transition);
+}
+
+tr:hover td {
+  background: rgba(26, 115, 232, 0.02);
+  transform: scale(1.002);
+}
+
+/* ============================================================
+   SPLIT GRID
+   ============================================================ */
+.split-grid {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.split-grid>* {
+  animation: splitSlideIn 0.5s ease-out both;
+}
+
+.split-grid>*:nth-child(1) { animation-delay: 0.05s; }
+.split-grid>*:nth-child(2) { animation-delay: 0.15s; }
+
+@keyframes splitSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+form.panel {
+  display: grid;
+  align-content: start;
+  gap: 16px;
+}
+
+/* ============================================================
+   CLASS META
+   ============================================================ */
+.class-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  animation: metaSlideIn 0.4s ease-out;
+}
+
+@keyframes metaSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.class-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--ink-light);
+  font-size: 0.9rem;
+}
+
+.class-meta span::before {
+  content: '•';
+  color: var(--secondary);
+  font-weight: 900;
+  font-size: 1.2rem;
+}
+
+/* ============================================================
+   REPORT BUTTONS
+   ============================================================ */
+.report-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.report-buttons button {
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 20px;
+  transition: var(--transition);
+}
+
+.report-buttons button:hover {
+  transform: translateY(-3px) scale(1.02);
+}
+
+/* ============================================================
+   REPORT LIST
+   ============================================================ */
+.report-list {
+  display: grid;
+  gap: 12px;
+}
+
+.report-list span {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  transition: var(--transition);
+}
+
+.report-list span:hover {
+  border-color: var(--secondary);
+  transform: translateX(4px) scale(1.01);
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: var(--glass-shadow);
+}
+
+.report-list small {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* ============================================================
+   RISK LIST
+   ============================================================ */
+.risk-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.risk-list span {
+  padding: 12px 20px;
+  background: rgba(234, 67, 53, 0.04);
+  border-radius: var(--radius);
+  border: 1px solid rgba(234, 67, 53, 0.06);
+  font-weight: 600;
+  color: var(--danger);
+  backdrop-filter: blur(4px);
+  transition: var(--transition);
+}
+
+.risk-list span:hover {
+  transform: translateY(-3px) scale(1.03);
+  background: rgba(234, 67, 53, 0.08);
+}
+
+/* ============================================================
+   STUDENT HERO
+   ============================================================ */
+.student-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: center;
+  padding: 32px;
+}
+
+.student-hero .eyebrow {
+  display: inline-block;
+  padding: 4px 16px;
+  background: rgba(26, 115, 232, 0.06);
+  border-radius: 50px;
+  color: var(--secondary);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  border: 1px solid rgba(26, 115, 232, 0.08);
+}
+
+.student-hero h3 {
+  font-size: 1.8rem;
+  font-weight: 800;
+  margin: 8px 0 8px;
+  color: var(--ink);
+}
+
+.student-status {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--glass-border);
+  transition: var(--transition);
+}
+
+.student-status:hover {
+  transform: scale(1.02);
+  border-color: var(--secondary);
+}
+
+.student-status span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.student-status strong {
+  font-size: 1.5rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

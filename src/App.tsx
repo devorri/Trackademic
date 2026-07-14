@@ -1,121 +1,76 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { DataProvider, useData } from './context/DataContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import LandingPage from './components/landing/LandingPage'
+import { Sidebar } from './components/layout/Sidebar'
+import { DashboardHeader } from './components/layout/DashboardHeader'
+import { AdminOverview } from './components/admin/AdminOverview'
+import { UserManagement } from './components/admin/UserManagement'
+import { StudentManagement } from './components/admin/StudentManagement'
+import { SubjectManagement } from './components/admin/SubjectManagement'
+import { InstructorOverview } from './components/instructor/InstructorOverview'
+import { ClassList } from './components/instructor/ClassList'
+import { Gradebook } from './components/instructor/Gradebook'
+import { Analytics } from './components/instructor/Analytics'
+import { StudentOverview } from './components/student/StudentOverview'
+import { StudentGrades } from './components/student/StudentGrades'
+import { ReportPanel } from './components/reports/ReportPanel'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+function DashboardContent() {
+  const { activeUser } = useAuth()
+  const { activeSection, selectedClass } = useData()
+
+  if (!activeUser) {
+    return <LandingPage />
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <section className="dashboard-shell" aria-label={`${activeUser.role} dashboard`}>
+      <Sidebar />
 
-      <div className="ticks"></div>
+      <div className="dashboard-content">
+        <DashboardHeader />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {activeUser.role === 'Administrator' && (
+          <div className="workspace">
+            {activeSection === 'overview' && <AdminOverview />}
+            {activeSection === 'users' && <UserManagement />}
+            {activeSection === 'students' && <StudentManagement />}
+            {activeSection === 'classes' && <SubjectManagement />}
+            {activeSection === 'reports' && <ReportPanel />}
+          </div>
+        )}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+        {activeUser.role === 'Instructor' && selectedClass && (
+          <div className="workspace">
+            {activeSection === 'overview' && <InstructorOverview />}
+            {activeSection === 'classes' && <ClassList />}
+            {activeSection === 'gradebook' && <Gradebook />}
+            {activeSection === 'analytics' && <Analytics />}
+            {activeSection === 'reports' && <ReportPanel />}
+          </div>
+        )}
+
+        {activeUser.role === 'Student' && (
+          <div className="workspace">
+            {activeSection === 'overview' && <StudentOverview />}
+            {(activeSection === 'grades' || activeSection === 'analytics') && <StudentGrades />}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function App() {
+  return (
+    <DataProvider>
+      <AuthProvider>
+        <main className="app-shell">
+          <DashboardContent />
+        </main>
+      </AuthProvider>
+    </DataProvider>
   )
 }
 
