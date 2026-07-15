@@ -16,7 +16,7 @@ export const StudentOverview: React.FC = () => {
       <div>
         <p className="eyebrow">Student Portal</p>
         <h3>{activeUser.name}</h3>
-        
+        <p>Read-only grades, academic status, and prediction results.</p>
       </div>
       <div className="student-status">
         <span>Academic Status</span>
