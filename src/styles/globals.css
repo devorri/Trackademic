@@ -267,29 +267,33 @@ input.score-input:focus {
    BUTTONS
    ============================================================ */
 button {
-  min-height: 40px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0 20px;
   border: none;
-  border-radius: 50px;
+  border-radius: 999px;
   font-weight: 700;
   transition: var(--transition);
   cursor: pointer;
-  font-size: 0.9rem;
-  gap: 8px;
+  font-size: 0.95rem;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 button:hover {
-  transform: translateY(-2px);
+  transform: translateY(-2px) scale(1.01);
 }
 
 .primary-action,
 .panel>button[type='submit'] {
   background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
   color: white;
-  box-shadow: 0 4px 20px rgba(26, 115, 232, 0.15);
+  box-shadow: 0 6px 24px rgba(26, 115, 232, 0.2);
 }
 
 .primary-action:hover,

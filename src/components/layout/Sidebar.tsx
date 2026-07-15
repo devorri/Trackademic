@@ -12,9 +12,14 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <img src="/trackademic-logo.jpg" alt="Trackademic Web-Based Class Record System" />
-        <strong>Trackademic</strong>
-        <span>{activeUser.role}</span>
+        <img src="/trackademic-logo.png" alt="Trackademic logo" />
+        <div className="brand-name-stack">
+          <strong>
+            <span className="brand-name-strong">Track</span>
+            <span className="brand-name-blue">ademic</span>
+          </strong>
+          <span className="brand-role-pill">{activeUser.role}</span>
+        </div>
       </div>
       <nav className="sidebar-nav" aria-label="Dashboard sections">
         {roleNavItems[activeUser.role].map((item) => (
@@ -24,7 +29,8 @@ export const Sidebar: React.FC = () => {
             key={item.id}
             onClick={() => setActiveSection(item.id)}
           >
-            {item.label}
+            <item.icon size={16} />
+            <span>{item.label}</span>
           </button>
         ))}
       </nav>

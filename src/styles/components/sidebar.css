@@ -32,14 +32,21 @@
 
 .sidebar-brand {
   display: grid;
+  gap: 10px;
+}
+
+.brand-name-stack {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .sidebar-brand img {
-  width: 156px;
-  height: 94px;
+  width: 56px;
+  height: 56px;
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius);
+  border-radius: 16px;
   object-fit: contain;
   background: #ffffff;
   box-shadow: 0 12px 30px rgba(26, 115, 232, 0.12);
@@ -52,20 +59,37 @@
 }
 
 .sidebar-brand strong {
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.08em;
+  white-space: nowrap;
+}
+
+.sidebar-brand .brand-name-strong {
+  color: var(--primary);
+}
+
+.sidebar-brand .brand-name-blue {
   background: linear-gradient(135deg, var(--secondary), var(--secondary-dark));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.sidebar-brand span {
+.sidebar-brand .brand-role-pill {
   color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  padding: 6px 10px;
+  border-radius: 999px;
+  align-self: start;
+  white-space: nowrap;
 }
 
 .sidebar-nav {
@@ -75,9 +99,12 @@
 }
 
 .sidebar-nav button {
+  display: inline-flex;
+  align-items: center;
   justify-content: flex-start;
   width: 100%;
-  padding: 12px 16px;
+  padding: 14px 16px;
+  gap: 12px;
   border: none;
   border-radius: var(--radius);
   background: transparent;
@@ -88,6 +115,17 @@
   cursor: pointer;
   position: relative;
   font-size: 0.95rem;
+}
+
+.sidebar-nav button svg {
+  width: 18px;
+  height: 18px;
+  color: var(--secondary);
+  flex-shrink: 0;
+}
+
+.sidebar-nav button span {
+  flex: 1;
 }
 
 .sidebar-nav button::before {
@@ -124,14 +162,18 @@
 }
 
 .sidebar-nav button.active-nav {
-  background: linear-gradient(135deg, rgba(26, 115, 232, 0.06), rgba(10, 22, 40, 0.03));
+  background: linear-gradient(135deg, rgba(26, 115, 232, 0.14), rgba(26, 115, 232, 0.05));
   color: var(--ink);
-  border: 1px solid var(--glass-border);
+  border: 1px solid rgba(26, 115, 232, 0.12);
   transform: translateX(4px);
 }
 
 .sidebar-nav button.active-nav::before {
   transform: translateY(-50%) scaleX(1);
+}
+
+.sidebar-nav button.active-nav svg {
+  color: var(--secondary-dark);
 }
 
 .sidebar-nav button.active-nav::after {
