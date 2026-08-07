@@ -86,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        const normalizedRole = profile.role.charAt(0).toUpperCase() + profile.role.slice(1).toLowerCase();
+        const normalizedRole = profile.role.toLowerCase();
         const foundUser = {
           id: profile.id,
           name: profile.email.split('@')[0],
@@ -133,10 +133,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const studentUser: User = {
         id: localStudent.id,
-        name: localStudent.name,
+        name: localStudent.name || localStudent.email || trimmedEmail,
         email: localStudent.email || trimmedEmail,
-        role: 'Student',
-        status: 'Active',
+        role: 'student',
+        status: 'active',
       }
       setActiveUser(studentUser)
       setActiveSection('overview')

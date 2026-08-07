@@ -20,9 +20,9 @@ export type RoleNavItem = {
 }
 
 export const roleEmails: Record<Role, string> = {
-  Administrator: 'admin@example.com',
-  Instructor: 'instructor@example.com',
-  Student: 'student1@example.com',
+  administrator: 'admin@example.com',
+  instructor: 'instructor@example.com',
+  student: 'student1@example.com',
 }
 
 export type LandingFeature = {
@@ -65,21 +65,21 @@ export const landingFeatures: LandingFeature[] = [
 ]
 
 export const roleNavItems: Record<Role, RoleNavItem[]> = {
-  Administrator: [
+  administrator: [
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'users', label: 'Instructors', icon: Users },
     { id: 'students', label: 'Students', icon: UserCheck },
     { id: 'classes', label: 'Subjects & Classes', icon: ClipboardList },
     { id: 'reports', label: 'Reports', icon: FileText },
   ],
-  Instructor: [
+  instructor: [
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'classes', label: 'Classes', icon: BookOpen },
     { id: 'gradebook', label: 'Gradebook', icon: Calculator },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'reports', label: 'Reports', icon: FileText },
   ],
-  Student: [
+  student: [
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'grades', label: 'My Grades', icon: BookOpen },
     { id: 'analytics', label: 'Prediction', icon: TrendingUp },

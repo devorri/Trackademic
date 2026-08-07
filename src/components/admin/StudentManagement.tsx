@@ -107,8 +107,8 @@ export const StudentManagement: React.FC = () => {
               <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.2rem' }}>Section *</label>
               <input
                 placeholder="e.g. 1A"
-                value={studentForm.section}
-                onChange={(event) => setStudentForm({ ...studentForm, section: event.target.value })}
+                value={studentForm.section_label}
+                onChange={(event) => setStudentForm({ ...studentForm, section_label: event.target.value })}
                 required
               />
             </div>
@@ -162,11 +162,11 @@ export const StudentManagement: React.FC = () => {
                 <tr key={student.id}>
                   <td>
                     <strong>{student.name}</strong>
-                    <small>{student.studentNo}</small>
+                    <small>{student.student_no || student.studentNo}</small>
                   </td>
                   <td>
                     <span className="chip" style={{ background: 'rgba(59,130,246,0.15)', color: '#60a5fa' }}>
-                      {student.course} {student.section}
+                      {student.course} {student.section_label}
                     </span>
                   </td>
                   <td>{student.email}</td>

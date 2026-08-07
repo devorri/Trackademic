@@ -1,8 +1,8 @@
 declare module '@supabase/supabase-js' {
   export function createClient(supabaseUrl: string, supabaseKey: string): any;
 
-  export type Role = 'Administrator' | 'Instructor' | 'Student';
-  export type UserStatus = 'Active' | 'Inactive' | 'Suspended';
+  export type Role = 'administrator' | 'instructor' | 'student';
+  export type UserStatus = 'active' | 'inactive';
 
   export type Profile = {
     id: string;

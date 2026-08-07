@@ -4,8 +4,8 @@ import { useData } from '../../context/DataContext'
 export const InstructorOverview: React.FC = () => {
   const { classes, selectedClass, reports } = useData()
 
-  const assignedSubjectsCount = new Set(classes.map((classItem) => classItem.subjectId)).size
-  const studentCount = selectedClass ? selectedClass.studentIds.length : 0
+  const assignedSubjectsCount = new Set(classes.map((classItem) => classItem.subject_id)).size
+  const studentCount = selectedClass?.studentIds?.length ?? 0
   const recentActivitiesCount = reports.length + 4
 
   return (

@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useData } from '../../context/DataContext'
 import type { ClassRecord } from '../../utils/types'
 import { getSubjectTitle } from '../../utils/helpers'
+import { dbInstructors, dbSections } from '../../utils/db'
 import { Plus, User, MapPin, Clock, Users, BookOpen, Pencil, Trash2 } from 'lucide-react'
 
 export const ClassManagement: React.FC = () => {
@@ -18,21 +19,21 @@ export const ClassManagement: React.FC = () => {
   } = useData()
 
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [editingClassId, setEditingClassId] = useState<number | null>(null)
+  const [editingClassId, setEditingClassId] = useState<string | null>(null)
   const [classSearch, setClassSearch] = useState('')
 
-  const [formSubjectId, setFormSubjectId] = useState<number>(subjects[0]?.id || 0)
+  const [formSubjectId, setFormSubjectId] = useState<string>(subjects[0]?.id || '')
   const [formSection, setFormSection] = useState('')
-  const [formInstructor, setFormInstructor] = useState(instructors[0]?.name || '')
+  const [formInstructorId, setFormInstructorId] = useState<string>(instructors[0]?.id || '')
   const [formRoom, setFormRoom] = useState('')
   const [formSchedule, setFormSchedule] = useState('')
-  const [selectedStudentIds, setSelectedStudentIds] = useState<number[]>([])
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([])
 
   function handleOpenCreateModal() {
     setEditingClassId(null)
-    setFormSubjectId(subjects[0]?.id || 0)
+    setFormSubjectId(subjects[0]?.id || '')
     setFormSection('')
-    setFormInstructor(instructors[0]?.name || '')
+    setFormInstructorId(instructors[0]?.id || '')
     setFormRoom('Room 201')
     setFormSchedule('MWF 9:00 AM - 10:30 AM')
     setSelectedStudentIds(students.map((s) => s.id))
@@ -41,16 +42,16 @@ export const ClassManagement: React.FC = () => {
 
   function handleOpenEditModal(cls: ClassRecord) {
     setEditingClassId(cls.id)
-    setFormSubjectId(cls.subjectId)
-    setFormSection(cls.section)
-    setFormInstructor(cls.instructor)
-    setFormRoom(cls.room)
-    setFormSchedule(cls.schedule)
+    setFormSubjectId(cls.subject_id || '')
+    setFormSection(cls.section?.name || '')
+    setFormInstructorId(cls.instructor_id || '')
+    setFormRoom(cls.room || '')
+    setFormSchedule(cls.schedule || '')
     setSelectedStudentIds(cls.studentIds || [])
     setIsModalOpen(true)
   }
 
-  function handleToggleStudent(studentId: number) {
+  function handleToggleStudent(studentId: string) {
     setSelectedStudentIds((prev) =>
       prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
     )
@@ -64,40 +65,57 @@ export const ClassManagement: React.FC = () => {
     }
   }
 
-  function handleSubmitClass(e: React.FormEvent) {
+  async function handleSubmitClass(e: React.FormEvent) {
     e.preventDefault()
-    if (!formSubjectId || !formSection || !formInstructor) {
+    if (!formSubjectId || !formSection || !formInstructorId) {
       alert('Please fill out Subject, Section, and Instructor.')
       return
     }
 
-    if (editingClassId) {
-      updateClass(editingClassId, {
-        subjectId: formSubjectId,
-        section: formSection,
-        instructor: formInstructor,
-        room: formRoom || 'TBA',
-        schedule: formSchedule || 'TBA',
-        studentIds: selectedStudentIds,
+    try {
+      const existingInstructor = await dbInstructors.getByProfileId(formInstructorId)
+      const instructor = existingInstructor ?? await dbInstructors.create({
+        profile_id: formInstructorId,
+        employee_no: `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+        department: undefined,
       })
-    } else {
-      createClass({
-        subjectId: formSubjectId,
-        section: formSection,
-        instructor: formInstructor,
-        room: formRoom || 'TBA',
-        schedule: formSchedule || 'TBA',
-        studentIds: selectedStudentIds,
-      })
-    }
 
-    setIsModalOpen(false)
+      if (editingClassId) {
+        await updateClass(editingClassId, {
+          subject_id: formSubjectId,
+          instructor_id: instructor.id,
+          room: formRoom || 'TBA',
+          schedule: formSchedule || 'TBA',
+          studentIds: selectedStudentIds,
+        })
+      } else {
+        const section = await dbSections.create({
+          name: formSection,
+          school_year: new Date().getFullYear().toString(),
+          semester: '1',
+        })
+        await createClass({
+          subject_id: formSubjectId,
+          section_id: section.id,
+          instructor_id: instructor.id,
+          room: formRoom || 'TBA',
+          schedule: formSchedule || 'TBA',
+          studentIds: selectedStudentIds,
+        })
+      }
+
+      setIsModalOpen(false)
+    } catch (error) {
+      console.error('Error submitting class:', error)
+      alert('Failed to save class')
+    }
   }
 
   const filteredClasses = classes.filter((cls) => {
-    const subjectTitle = getSubjectTitle(subjects, cls.subjectId)
-    const subjectObj = subjects.find((s) => s.id === cls.subjectId)
-    return [subjectTitle, subjectObj?.code || '', cls.section, cls.instructor, cls.room, cls.schedule]
+    const subjectTitle = getSubjectTitle(subjects, cls.subject_id)
+    const subjectObj = subjects.find((s) => s.id === cls.subject_id)
+    const instructorName = instructors.find((i) => i.id === cls.instructor_id)?.name || ''
+    return [subjectTitle, subjectObj?.code || '', cls.room || '', cls.schedule || '', instructorName]
       .join(' ')
       .toLowerCase()
       .includes(classSearch.toLowerCase())
@@ -135,8 +153,9 @@ export const ClassManagement: React.FC = () => {
         ) : (
           <div className="classes-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.2rem', marginTop: '1.5rem' }}>
             {filteredClasses.map((cls) => {
-              const subjectTitle = getSubjectTitle(subjects, cls.subjectId)
-              const subjectObj = subjects.find((s) => s.id === cls.subjectId)
+              const subjectTitle = getSubjectTitle(subjects, cls.subject_id)
+              const subjectObj = subjects.find((s) => s.id === cls.subject_id)
+              const instructorName = instructors.find((i) => i.id === cls.instructor_id)?.name || 'Unassigned'
               return (
                 <div key={cls.id} className="class-card panel" style={{ border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '1.4rem 1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6))', transition: 'border-color 0.2s ease, box-shadow 0.2s ease' }}>
                   <div>
@@ -146,14 +165,14 @@ export const ClassManagement: React.FC = () => {
                           {subjectObj?.code || 'SUBJECT'}
                         </span>
                         <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.1rem', color: '#f1f5f9', fontWeight: 600, lineHeight: 1.3 }}>{subjectTitle}</h4>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>Section <strong style={{ color: '#cbd5e1' }}>{cls.section}</strong></p>
+                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>Section <strong style={{ color: '#cbd5e1' }}>{cls.section?.name || 'N/A'}</strong></p>
                       </div>
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', margin: '0.8rem 0 1.2rem 0', padding: '0.9rem', background: 'rgba(0,0,0,0.15)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.84rem', color: '#cbd5e1' }}>
                         <User size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
-                        <span><strong style={{ color: '#e2e8f0' }}>Instructor:</strong> {cls.instructor}</span>
+                        <span><strong style={{ color: '#e2e8f0' }}>Instructor:</strong> {instructorName}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.84rem', color: '#cbd5e1' }}>
                         <MapPin size={14} style={{ color: '#a78bfa', flexShrink: 0 }} />
@@ -247,15 +266,16 @@ export const ClassManagement: React.FC = () => {
                 <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#94a3b8' }}>Select Subject *</label>
                 <select
                   value={formSubjectId}
-                  onChange={(e) => setFormSubjectId(Number(e.target.value))}
+                  onChange={(e) => setFormSubjectId(e.target.value)}
                   style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155' }}
                 >
+                  <option value="">Select a subject</option>
                   {subjects.map((sub) => (
                     <option key={sub.id} value={sub.id}>
                       {sub.code} - {sub.title} ({sub.units} units)
                     </option>
                   ))}
-                  {subjects.length === 0 && <option value={0}>No subjects created yet</option>}
+                  {subjects.length === 0 && <option value="">No subjects created yet</option>}
                 </select>
               </div>
 
@@ -263,16 +283,17 @@ export const ClassManagement: React.FC = () => {
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#94a3b8' }}>Assign Instructor *</label>
                   <select
-                    value={formInstructor}
-                    onChange={(e) => setFormInstructor(e.target.value)}
+                    value={formInstructorId}
+                    onChange={(e) => setFormInstructorId(e.target.value)}
                     style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155' }}
                   >
+                    <option value="">Select an instructor</option>
                     {instructors.map((inst) => (
-                      <option key={inst.id} value={inst.name}>
+                      <option key={inst.id} value={inst.id}>
                         {inst.name} ({inst.email})
                       </option>
                     ))}
-                    {instructors.length === 0 && <option value="Unassigned">Unassigned</option>}
+                    {instructors.length === 0 && <option value="">No instructors available</option>}
                   </select>
                 </div>
 
@@ -339,7 +360,7 @@ export const ClassManagement: React.FC = () => {
                           onChange={() => handleToggleStudent(st.id)}
                         />
                         <span>
-                          <strong>{st.name}</strong> ({st.studentNo}) - {st.course} {st.section}
+                          <strong>{st.name}</strong> ({st.student_no || st.studentNo}) - {st.course} {st.section_label}
                         </span>
                       </label>
                     ))

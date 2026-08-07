@@ -2,10 +2,10 @@ import React from 'react'
 import { useData } from '../../context/DataContext'
 
 export const AdminOverview: React.FC = () => {
-  const { students, users, classes, atRiskRows, boundToFailRows, averagePerformance, setActiveSection, setSelectedClassId } = useData()
+  const { students, users, classes, instructors, atRiskRows, boundToFailRows, averagePerformance, setActiveSection, setSelectedClassId } = useData()
 
 
-  const totalInstructors = users.filter((user) => user.role === 'Instructor').length
+  const totalInstructors = users.filter((user) => user.role === 'instructor').length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -15,7 +15,7 @@ export const AdminOverview: React.FC = () => {
         <article><span>Active Classes</span><strong>{classes.length}</strong></article>
         <article><span>School GWA Mean</span><strong>{averagePerformance}%</strong></article>
         <article style={{ borderLeft: '4px solid #f59e0b' }}>
-          <span style={{ color: '#fde68a' }}>Alanganin / At Risk</span>
+          <span style={{ color: '#fde68a' }}>At Risk</span>
           <strong style={{ color: '#f59e0b' }}>{atRiskRows.length}</strong>
         </article>
         <article style={{ borderLeft: '4px solid #ef4444' }}>
@@ -68,9 +68,9 @@ export const AdminOverview: React.FC = () => {
                     <small>{item.student?.studentNo}</small>
                   </td>
                   <td>
-                    {item.classItem?.section}
+                    {item.classItem?.section?.name || 'N/A'}
                   </td>
-                  <td>{item.classItem?.instructor}</td>
+                  <td>{instructors.find((i) => i.id === item.classItem?.instructor_id)?.name || 'Unassigned'}</td>
                   <td><strong>{item.computed.overall}%</strong></td>
                   <td><span className="chip">{item.computed.gpaEquiv}</span></td>
                   <td>

@@ -31,7 +31,7 @@ function DashboardContent() {
       <div className="dashboard-content">
         <DashboardHeader />
 
-        {activeUser.role === 'Administrator' && (
+        {activeUser.role === 'administrator' && (
           <div className="workspace">
             {activeSection === 'overview' && <AdminOverview />}
             {activeSection === 'users' && <UserManagement />}
@@ -41,7 +41,7 @@ function DashboardContent() {
           </div>
         )}
 
-        {activeUser.role === 'Instructor' && selectedClass && (
+        {activeUser.role === 'instructor' && selectedClass && (
           <div className="workspace">
             {activeSection === 'overview' && <InstructorOverview />}
             {activeSection === 'classes' && <ClassList />}
@@ -51,7 +51,7 @@ function DashboardContent() {
           </div>
         )}
 
-        {activeUser.role === 'Student' && (
+        {activeUser.role === 'student' && (
           <div className="workspace">
             {activeSection === 'overview' && <StudentOverview />}
             {(activeSection === 'grades' || activeSection === 'analytics') && <StudentGrades />}

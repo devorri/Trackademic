@@ -118,7 +118,7 @@ export const SubjectManagement: React.FC = () => {
                       <small>{subject.title}</small>
                     </td>
                     <td><span className="chip">{subject.units} Units</span></td>
-                    <td>{classes.filter((classItem) => classItem.subjectId === subject.id).length} Active Class(es)</td>
+                    <td>{classes.filter((classItem) => classItem.subject_id === subject.id).length} Active Class(es)</td>
                     <td>
                       <div className="table-actions">
                         <button type="button" onClick={() => createClassFromSubject(subject)}>

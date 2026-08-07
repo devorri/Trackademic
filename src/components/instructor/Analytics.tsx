@@ -8,7 +8,7 @@ export const Analytics: React.FC = () => {
 
   if (!selectedClass) return null
 
-  const subjectTitle = getSubjectTitle(subjects, selectedClass.subjectId)
+  const subjectTitle = getSubjectTitle(subjects, selectedClass.subject_id)
 
   const filteredItems = gradebook.filter((item) => {
     if (filter === 'BOUND_TO_FAIL') return item.computed.status === 'Bound to Fail'
@@ -40,7 +40,7 @@ export const Analytics: React.FC = () => {
         <div className="card-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem' }}>
           <div>
             <h3 style={{ margin: 0 }}>Predictive Failure Risk & Academic Performance</h3>
-            <span className="chip">{subjectTitle} ({selectedClass.section})</span>
+            <span className="chip">{subjectTitle} ({selectedClass.section?.name || 'N/A'})</span>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
@@ -145,7 +145,7 @@ export const Analytics: React.FC = () => {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
                     <div>
                       <h4 style={{ margin: 0, fontSize: '1.1rem' }}>{studentName}</h4>
-                      <small style={{ color: '#9ca3af' }}>{studentNo} | {item.student?.course} {item.student?.section}</small>
+                      <small style={{ color: '#9ca3af' }}>{studentNo} | {item.student?.course} {item.student?.section_label}</small>
                     </div>
                     <span
                       style={{

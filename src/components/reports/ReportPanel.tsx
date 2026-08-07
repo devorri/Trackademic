@@ -227,7 +227,7 @@ export const ReportPanel: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                   <strong style={{ fontSize: '0.9rem', color: '#e2e8f0' }}>{report.title}</strong>
                   <small style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                    {report.generatedAt} • by {report.generatedBy}
+                    {report.created_at} • by {report.generated_by}
                   </small>
                 </div>
                 <span className="chip" style={{ fontSize: '0.7rem', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}>

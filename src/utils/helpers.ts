@@ -6,8 +6,8 @@ export function clampScore(value: string) {
   return Math.max(0, Math.min(100, parsed))
 }
 
-export function getSubjectTitle(subjects: Subject[], subjectId: number) {
-  return subjects.find((subject) => subject.id === subjectId)?.title ?? 'Unassigned subject'
+export function getSubjectTitle(subjects: Subject[], subjectId: string | number) {
+  return subjects.find((subject) => subject.id === subjectId || subject.id === String(subjectId))?.title ?? 'Unassigned subject'
 }
 
 export function getGPAEquivalent(score: number): string {
@@ -24,7 +24,7 @@ export function getGPAEquivalent(score: number): string {
 }
 
 export function getPrediction(overall: number, trendScore: number): PredictionStatus {
-  if (overall < 70 || trendScore < 70) return 'Bound to Fail'
+  if (overall < 74 || trendScore < 74) return 'Bound to Fail'
   if (overall < 75 || trendScore < 75) return 'At Risk'
   if (overall >= 90) return 'Excellent'
   if (overall >= 83) return 'Good'

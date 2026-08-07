@@ -21,7 +21,7 @@ export const UserManagement: React.FC = () => {
     setUserForm(blankUser)
   }
 
-  const staffUsers = users.filter((u) => u.role !== 'Student')
+  const staffUsers = users.filter((u) => u.role !== 'student')
 
   const filteredUsers = staffUsers.filter((u) =>
     [u.name, u.email, u.role, u.status]
@@ -96,8 +96,8 @@ export const UserManagement: React.FC = () => {
                 value={userForm.role}
                 onChange={(event) => setUserForm({ ...userForm, role: event.target.value as Role })}
               >
-                <option value="Instructor">Instructor</option>
-                <option value="Administrator">Administrator</option>
+                <option value="instructor">Instructor</option>
+                <option value="administrator">Administrator</option>
               </select>
             </div>
 
@@ -107,8 +107,8 @@ export const UserManagement: React.FC = () => {
                 value={userForm.status}
                 onChange={(event) => setUserForm({ ...userForm, status: event.target.value as UserStatus })}
               >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
               </select>
             </div>
           </div>
@@ -167,11 +167,11 @@ export const UserManagement: React.FC = () => {
                       className="chip"
                       style={{
                         background:
-                          user.role === 'Administrator'
+                          user.role === 'administrator'
                             ? 'rgba(168,85,247,0.15)'
                             : 'rgba(59,130,246,0.15)',
                         color:
-                          user.role === 'Administrator'
+                          user.role === 'administrator'
                             ? '#c084fc'
                             : '#60a5fa',
                       }}

@@ -5,7 +5,7 @@ import { getSubjectTitle } from '../../utils/helpers'
 
 export const StudentGrades: React.FC = () => {
   const { activeUser } = useAuth()
-  const { allComputedRows, subjects, activeSection } = useData()
+  const { allComputedRows, subjects, instructors, activeSection } = useData()
 
   if (!activeUser) return null
 
@@ -48,7 +48,7 @@ export const StudentGrades: React.FC = () => {
           </h4>
           <p style={{ margin: 0, fontSize: '0.9rem', color: '#fca5a5' }}>
             Our predictive system has flagged that your current grade trend is on the boundary or bound to fail in{' '}
-            <strong>{atRiskOrFailing.map((i) => getSubjectTitle(subjects, i.classItem.subjectId)).join(', ')}</strong>.
+            <strong>{atRiskOrFailing.map((i) => getSubjectTitle(subjects, i.classItem.subject_id)).join(', ')}</strong>.
             Please review the target scores required below and consult your instructor for remedial assistance.
           </p>
         </div>
@@ -97,10 +97,10 @@ export const StudentGrades: React.FC = () => {
                     }
                   >
                     <td>
-                      <strong>{getSubjectTitle(subjects, item.classItem.subjectId)}</strong>
-                      <small>{item.classItem.section}</small>
+                      <strong>{getSubjectTitle(subjects, item.classItem.subject_id)}</strong>
+                      <small>{item.classItem.section?.name || 'N/A'}</small>
                     </td>
-                    <td>{item.classItem.instructor}</td>
+                    <td>{instructors.find((i) => i.id === item.classItem.instructor_id)?.name || 'Unassigned'}</td>
                     <td>{item.computed.preliminary}%</td>
                     <td>{item.computed.midterm}%</td>
                     <td>{item.computed.final}%</td>

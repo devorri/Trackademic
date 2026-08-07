@@ -6,9 +6,11 @@ import { clampScore } from '../../utils/helpers'
 
 export const Gradebook: React.FC = () => {
   const { activeUser } = useAuth()
-  const { selectedClass, gradebook, selectedClassAverages, updateGrade, generateReport, printReport } = useData()
+  const { selectedClass, instructors, gradebook, selectedClassAverages, updateGrade, generateReport, printReport } = useData()
 
   if (!selectedClass) return null
+
+  const instructorName = instructors.find((i) => i.id === selectedClass.instructor_id)?.name || 'Unassigned'
 
   function getStatusBadgeStyle(status: string) {
     switch (status) {
@@ -32,7 +34,7 @@ export const Gradebook: React.FC = () => {
       <div className="card-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h3>Class Gradebook & Weighted Averages</h3>
-          <span className="chip">Section: {selectedClass.section} | Instructor: {selectedClass.instructor}</span>
+          <span className="chip">Section: {selectedClass.section?.name || 'N/A'} | Instructor: {instructorName}</span>
         </div>
         <div className="table-actions">
           <button type="button" onClick={() => generateReport('Class Record', activeUser?.name ?? 'System')}>
