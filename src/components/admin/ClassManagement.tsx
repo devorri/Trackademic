@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useData } from '../../context/DataContext'
 import type { ClassRecord } from '../../utils/types'
 import { getSubjectTitle } from '../../utils/helpers'
-import { Search, Plus, User, MapPin, Clock, Users, BookOpen, Pencil, Trash2 } from 'lucide-react'
+import { Plus, User, MapPin, Clock, Users, BookOpen, Pencil, Trash2 } from 'lucide-react'
 
 export const ClassManagement: React.FC = () => {
   const {
