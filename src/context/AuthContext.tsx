@@ -1,7 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react'
 import { supabase } from '../utils/supabase.ts'
 import type { User } from '../utils/types'
-import { roleEmails } from '../utils/constants'
 import { useData } from './DataContext'
 
 interface AuthContextType {
@@ -24,11 +23,11 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { setActiveSection } = useData()
+  const { setActiveSection, users, students } = useData()
   
   const [activeUser, setActiveUser] = useState<User | null>(null)
-  const [loginEmail, setLoginEmail] = useState(roleEmails.Administrator)
-  const [loginPassword, setLoginPassword] = useState('admin123')
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
   const [loginError, setLoginError] = useState('')
   const [resetNotice, setResetNotice] = useState('')
   const [isLoginOpen, setIsLoginOpen] = useState(false)
@@ -60,40 +59,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault()
     setLoginError('')
-    if (!loginEmail.trim() || !loginPassword.trim()) {
+    const trimmedEmail = loginEmail.trim().toLowerCase()
+    const trimmedPass = loginPassword.trim()
+
+    if (!trimmedEmail || !trimmedPass) {
       setLoginError('Please enter your email and password.')
       return
     }
-    // Query Supabase accounts table
-    const { data: account, error: accountError } = await supabase
-      .from('accounts')
-      .select('id, email, role, status')
-      .eq('email', loginEmail.trim().toLowerCase())
-      .single();
 
-    if (accountError || !account) {
-      setLoginError('No account found with that email address.');
-      return;
+    // 1. Try Supabase profiles table query
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email, password_plain, role, status')
+        .eq('email', trimmedEmail)
+        .single();
+
+      if (!profileError && profile) {
+        if (profile.password_plain !== trimmedPass) {
+          setLoginError('Incorrect password.');
+          return;
+        }
+
+        if (profile.status.toLowerCase() !== 'active') {
+          setLoginError('This account is inactive. Contact your administrator.');
+          return;
+        }
+
+        const normalizedRole = profile.role.charAt(0).toUpperCase() + profile.role.slice(1).toLowerCase();
+        const foundUser = {
+          id: profile.id,
+          name: profile.email.split('@')[0],
+          email: profile.email,
+          role: normalizedRole as any,
+          status: profile.status as any,
+        };
+        setActiveUser(foundUser)
+        setActiveSection('overview')
+        setIsLoginOpen(false)
+        setLoginError('')
+        setResetNotice('')
+        return
+      }
+    } catch {
+      // Supabase query failed or unavailable, fallback to local users/students
     }
 
-    if (account.status.toLowerCase() !== 'active') {
-      setLoginError('This account is inactive. Contact your administrator.');
-      return;
+    // 2. Check local users state
+    const localUser = users.find((u) => u.email.toLowerCase() === trimmedEmail)
+    if (localUser) {
+      if (localUser.password && localUser.password !== trimmedPass) {
+        setLoginError('Incorrect password.')
+        return
+      }
+      if (localUser.status.toLowerCase() !== 'active') {
+        setLoginError('This account is inactive. Contact your administrator.')
+        return
+      }
+      setActiveUser(localUser)
+      setActiveSection('overview')
+      setIsLoginOpen(false)
+      setLoginError('')
+      setResetNotice('')
+      return
     }
 
-    const normalizedRole = account.role.charAt(0).toUpperCase() + account.role.slice(1).toLowerCase();
-    const foundUser = {
-      id: account.id,
-      name: account.email.split('@')[0], // simple name fallback
-      email: account.email,
-      role: normalizedRole as any,
-      status: account.status as any,
-    };
-    setActiveUser(foundUser)
-    setActiveSection('overview')
-    setIsLoginOpen(false)
-    setLoginError('')
-    setResetNotice('')
+    // 3. Check local students state
+    const localStudent = students.find((s) => s.email?.toLowerCase() === trimmedEmail)
+    if (localStudent) {
+      if (localStudent.password && localStudent.password !== trimmedPass) {
+        setLoginError('Incorrect password.')
+        return
+      }
+      const studentUser: User = {
+        id: localStudent.id,
+        name: localStudent.name,
+        email: localStudent.email || trimmedEmail,
+        role: 'Student',
+        status: 'Active',
+      }
+      setActiveUser(studentUser)
+      setActiveSection('overview')
+      setIsLoginOpen(false)
+      setLoginError('')
+      setResetNotice('')
+      return
+    }
+
+    setLoginError('No account found with that email address.')
   }
 
   function handleLogout() {

@@ -67,7 +67,7 @@ export const landingFeatures: LandingFeature[] = [
 export const roleNavItems: Record<Role, RoleNavItem[]> = {
   Administrator: [
     { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Users', icon: Users },
+    { id: 'users', label: 'Instructors', icon: Users },
     { id: 'students', label: 'Students', icon: UserCheck },
     { id: 'classes', label: 'Subjects & Classes', icon: ClipboardList },
     { id: 'reports', label: 'Reports', icon: FileText },

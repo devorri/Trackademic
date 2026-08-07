@@ -40,6 +40,16 @@ export const LoginModal: React.FC = () => {
           </button>
 
           <div className="login-modal-header">
+            <div className="login-modal-logo" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem' }}>
+              <img
+                src="/trackademic-logo.png"
+                alt="Trackademic logo"
+                style={{ width: '48px', height: '48px', borderRadius: '12px', objectFit: 'cover', boxShadow: '0 4px 12px rgba(26,115,232,0.15)' }}
+              />
+              <span style={{ fontSize: '1.4rem', fontWeight: 900, letterSpacing: '-0.02em', color: '#1a2332' }}>
+                Track<span style={{ color: '#1a73e8' }}>ademic</span>
+              </span>
+            </div>
             <p className="eyebrow">Secure Sign In</p>
             <h2 id="login-modal-title">Welcome Back</h2>
             <p>Sign in to access your dashboard</p>

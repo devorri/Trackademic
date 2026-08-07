@@ -644,3 +644,19 @@ button:not(.primary-action):not(.text-action):hover {
     break-inside: avoid;
   }
 }
+
+/* Prediction Failure Risk Rows */
+.risk-row {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+}
+.risk-row:hover {
+  background-color: rgba(245, 158, 11, 0.22) !important;
+}
+
+.bound-to-fail-row {
+  background-color: rgba(239, 68, 68, 0.16) !important;
+}
+.bound-to-fail-row:hover {
+  background-color: rgba(239, 68, 68, 0.28) !important;
+}
+
