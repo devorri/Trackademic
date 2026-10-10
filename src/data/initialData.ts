@@ -732,9 +732,9 @@ export const initialSystemSettings: SystemSettings = {
   midtermWeight: 30,
   finalWeight: 40,
   quizWeight: 30,
-  assignmentWeight: 20,
-  activityWeight: 20,
-  examWeight: 30,
+  assignmentWeight: 0,
+  activityWeight: 30,
+  examWeight: 40,
   automatedRiskAlerts: true,
   systemPreferences: {
     theme: 'dark',

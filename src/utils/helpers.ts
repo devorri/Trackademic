@@ -32,10 +32,16 @@ export function getPrediction(overall: number, trendScore: number): PredictionSt
 }
 
 export function computeGrade(row: GradeRow): PredictionAnalysis {
-  const preliminary = Math.round(row.quizzes * 0.4 + row.assignments * 0.3 + row.activities * 0.3)
+  // Preliminary calculation with Quiz 30%, Activity 30%, Exam 40%
+  const preliminary = Math.round(row.quizzes * 0.3 + row.activities * 0.3 + (row.midtermExam || row.quizzes) * 0.4)
   const midterm = Math.round(preliminary * 0.4 + row.midtermExam * 0.6)
   const final = Math.round(preliminary * 0.25 + midterm * 0.25 + row.finalExam * 0.5)
-  const overall = Math.round(preliminary * 0.3 + midterm * 0.3 + final * 0.4)
+
+  // Dynamically check how many terms have grades (> 0) and take the average
+  const activeTerms = [preliminary, midterm, final].filter((grade) => typeof grade === 'number' && grade > 0)
+  const overall = activeTerms.length > 0
+    ? Math.round(activeTerms.reduce((sum, g) => sum + g, 0) / activeTerms.length)
+    : 0
   const trendScore = Math.round(overall * 0.75 + row.historical * 0.25)
   
   const status = getPrediction(overall, trendScore)
@@ -53,11 +59,8 @@ export function computeGrade(row: GradeRow): PredictionAnalysis {
   }
 
   // Calculate required Final Exam score to reach passing grade (75 overall)
-  // overall = prelim * 0.3 + midterm * 0.3 + (prelim*0.25 + midterm*0.25 + finalExam*0.5)*0.4
-  // 75 = prelim*0.4 + midterm*0.4 + finalExam*0.2
-  // 0.2 * finalExam = 75 - 0.4*prelim - 0.4*midterm
-  // finalExam = (75 - 0.4*prelim - 0.4*midterm) / 0.2
-  const targetFinalExam = Math.max(0, Math.min(100, Math.ceil((75 - 0.4 * preliminary - 0.4 * midterm) / 0.2)))
+  // (preliminary + midterm + final) / 3 >= 75 => final >= 225 - preliminary - midterm
+  const targetFinalExam = Math.max(0, Math.min(100, Math.ceil(225 - preliminary - midterm)))
   const requiredFinalScore = Number.isNaN(targetFinalExam) ? 75 : targetFinalExam
 
   // Confidence level (0-100%)

@@ -747,23 +747,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...item[period],
           [field]: value,
         }
-        // Recalculate term grade: e.g. quiz 30%, activities 30%, exam 40%
-        const computedTermGrade = Math.round(
-          updatedPeriod.quiz * (settings.quizWeight / 100) +
-            updatedPeriod.activities * (settings.activityWeight / 100) +
-            updatedPeriod.exam * (settings.examWeight / 100),
-        )
+        // Recalculate term grade dynamically based on available components
+        // (Exam 40%, Activities 30%, Quiz 30%)
+        const activeComponents: { score: number; weight: number }[] = []
+        if (updatedPeriod.quiz > 0) activeComponents.push({ score: updatedPeriod.quiz, weight: settings.quizWeight })
+        if (updatedPeriod.activities > 0) activeComponents.push({ score: updatedPeriod.activities, weight: settings.activityWeight })
+        if (updatedPeriod.exam > 0) activeComponents.push({ score: updatedPeriod.exam, weight: settings.examWeight })
+
+        let computedTermGrade = 0
+        if (activeComponents.length > 0) {
+          const totalWeight = activeComponents.reduce((sum, c) => sum + c.weight, 0)
+          const weightedSum = activeComponents.reduce((sum, c) => sum + (c.score * c.weight), 0)
+          computedTermGrade = Math.round(weightedSum / (totalWeight > 0 ? totalWeight : 1))
+        }
         updatedPeriod.computedTermGrade = computedTermGrade
 
         const prelimGrade = period === 'prelim' ? computedTermGrade : item.prelim.computedTermGrade
         const midtermGrade = period === 'midterm' ? computedTermGrade : item.midterm.computedTermGrade
         const finalGrade = period === 'final' ? computedTermGrade : item.final.computedTermGrade
 
-        const overallAverage = Math.round(
-          prelimGrade * (settings.prelimWeight / 100) +
-            midtermGrade * (settings.midtermWeight / 100) +
-            finalGrade * (settings.finalWeight / 100),
-        )
+        // Dynamically check how many term grades exist (> 0) and take the average
+        const activeTerms = [prelimGrade, midtermGrade, finalGrade].filter((grade) => typeof grade === 'number' && grade > 0)
+        const overallAverage = activeTerms.length > 0
+          ? Number((activeTerms.reduce((sum, g) => sum + g, 0) / activeTerms.length).toFixed(1))
+          : 0
 
         let status: any = 'Average'
         if (overallAverage >= 90) status = 'Excellent'
