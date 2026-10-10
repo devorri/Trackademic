@@ -1,16 +1,36 @@
 export type Role = 'administrator' | 'instructor' | 'student'
 export type UserStatus = 'active' | 'inactive'
-export type PredictionStatus = 'Excellent' | 'Good' | 'Average' | 'At Risk' | 'Bound to Fail'
-export type ReportType = 'Student Grade Report' | 'Class Record' | 'Academic Performance Report' | 'Prediction Report'
+export type PredictionStatus = 'Excellent' | 'Good' | 'Average' | 'At Risk' | 'Bound to Fail' | 'On Track' | 'High'
+export type ReportType =
+  | 'Student Performance Report'
+  | 'Class Performance Report'
+  | 'Instructor / Class Summary'
+  | 'At-Risk Student Report'
+  | 'Grade Summary'
+  | 'Predictive Analytics Report'
+  | 'Class Grade Report'
+  | 'Class Average Report'
+  | 'Student Grade Report'
+  | 'Class Record'
+  | 'Academic Performance Report'
+  | 'Prediction Report'
 export type DashboardSection =
   | 'overview'
   | 'users'
+  | 'instructors'
   | 'students'
   | 'classes'
+  | 'predictive_analytics'
   | 'gradebook'
   | 'analytics'
   | 'reports'
+  | 'notifications'
+  | 'activity_logs'
+  | 'settings'
   | 'grades'
+  | 'prediction'
+  | 'performance'
+  | 'profile'
 
 export type Profile = {
   id: string;
@@ -179,4 +199,60 @@ export type Report = {
   export_format?: 'view' | 'print' | 'pdf' | 'excel'
   file_url?: string
   created_at: string
+}
+
+export type DetailedTermScores = {
+  exam: number
+  quiz: number
+  activities: number
+  computedTermGrade: number
+}
+
+export type DetailedGradingSheet = {
+  studentId: string
+  studentName?: string
+  studentNo?: string
+  prelim: DetailedTermScores
+  midterm: DetailedTermScores
+  final: DetailedTermScores
+  average: number
+  status: PredictionStatus
+}
+
+export type NotificationItem = {
+  id: string
+  title: string
+  message: string
+  timestamp: string
+  read: boolean
+  role: Role | 'all'
+  category?: 'system' | 'grades' | 'risk' | 'report' | 'user'
+}
+
+export type ActivityLogItem = {
+  id: string
+  actor: string
+  action: string
+  timestamp: string
+  timeFormatted: string
+  target?: string
+}
+
+export type SystemSettings = {
+  schoolYear: string
+  semester: string
+  passingGrade: number
+  prelimWeight: number
+  midtermWeight: number
+  finalWeight: number
+  quizWeight: number
+  assignmentWeight: number
+  activityWeight: number
+  examWeight: number
+  automatedRiskAlerts: boolean
+  systemPreferences: {
+    theme: 'dark' | 'light'
+    allowExport: boolean
+    autoCompute: boolean
+  }
 }

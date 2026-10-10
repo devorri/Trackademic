@@ -9,7 +9,9 @@ export const DashboardHeader: React.FC = () => {
 
   if (!activeUser) return null
 
-  const currentLabel = roleNavItems[activeUser.role].find((item) => item.id === activeSection)?.label
+  const currentLabel =
+    roleNavItems[activeUser.role]?.find((item) => item.id === activeSection)?.label ||
+    activeSection.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
   return (
     <header className="dashboard-header">

@@ -11,6 +11,11 @@ import {
   Users,
   ClipboardList,
   BookOpen,
+  Bell,
+  Activity,
+  Settings,
+  User,
+  BarChart2,
 } from 'lucide-react'
 
 export type RoleNavItem = {
@@ -67,10 +72,14 @@ export const landingFeatures: LandingFeature[] = [
 export const roleNavItems: Record<Role, RoleNavItem[]> = {
   administrator: [
     { id: 'overview', label: 'Overview', icon: Home },
-    { id: 'users', label: 'Instructors', icon: Users },
+    { id: 'instructors', label: 'Instructors', icon: Users },
     { id: 'students', label: 'Students', icon: UserCheck },
     { id: 'classes', label: 'Subjects & Classes', icon: ClipboardList },
+    { id: 'predictive_analytics', label: 'Predictive Analytics', icon: TrendingUp },
     { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'activity_logs', label: 'Activity Logs', icon: Activity },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ],
   instructor: [
     { id: 'overview', label: 'Overview', icon: Home },
@@ -78,10 +87,15 @@ export const roleNavItems: Record<Role, RoleNavItem[]> = {
     { id: 'gradebook', label: 'Gradebook', icon: Calculator },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'reports', label: 'Reports', icon: FileText },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'profile', label: 'Profile', icon: User },
   ],
   student: [
     { id: 'overview', label: 'Overview', icon: Home },
     { id: 'grades', label: 'My Grades', icon: BookOpen },
-    { id: 'analytics', label: 'Prediction', icon: TrendingUp },
+    { id: 'prediction', label: 'Prediction', icon: TrendingUp },
+    { id: 'performance', label: 'Performance', icon: BarChart2 },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'profile', label: 'My Profile', icon: User },
   ],
 }

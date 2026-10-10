@@ -27,6 +27,8 @@ export const ClassManagement: React.FC = () => {
   const [formInstructorId, setFormInstructorId] = useState<string>(instructors[0]?.id || '')
   const [formRoom, setFormRoom] = useState('')
   const [formSchedule, setFormSchedule] = useState('')
+  const [formSchoolYear, setFormSchoolYear] = useState('2025-2026')
+  const [formSemester, setFormSemester] = useState('1st Semester')
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([])
 
   function handleOpenCreateModal() {
@@ -36,6 +38,8 @@ export const ClassManagement: React.FC = () => {
     setFormInstructorId(instructors[0]?.id || '')
     setFormRoom('Room 201')
     setFormSchedule('MWF 9:00 AM - 10:30 AM')
+    setFormSchoolYear('2025-2026')
+    setFormSemester('1st Semester')
     setSelectedStudentIds(students.map((s) => s.id))
     setIsModalOpen(true)
   }
@@ -47,6 +51,8 @@ export const ClassManagement: React.FC = () => {
     setFormInstructorId(cls.instructor_id || '')
     setFormRoom(cls.room || '')
     setFormSchedule(cls.schedule || '')
+    setFormSchoolYear(cls.section?.school_year || '2025-2026')
+    setFormSemester(cls.section?.semester || '1st Semester')
     setSelectedStudentIds(cls.studentIds || [])
     setIsModalOpen(true)
   }
@@ -87,13 +93,27 @@ export const ClassManagement: React.FC = () => {
           room: formRoom || 'TBA',
           schedule: formSchedule || 'TBA',
           studentIds: selectedStudentIds,
+          section: {
+            id: 'sec-' + editingClassId,
+            name: formSection,
+            school_year: formSchoolYear,
+            semester: formSemester,
+            created_at: new Date().toISOString(),
+          },
         })
       } else {
         const section = await dbSections.create({
           name: formSection,
-          school_year: new Date().getFullYear().toString(),
-          semester: '1',
-        })
+          school_year: formSchoolYear,
+          semester: formSemester,
+        }).catch(() => ({
+          id: 'sec-' + crypto.randomUUID().slice(0, 8),
+          name: formSection,
+          school_year: formSchoolYear,
+          semester: formSemester,
+          created_at: new Date().toISOString(),
+        }))
+
         await createClass({
           subject_id: formSubjectId,
           section_id: section.id,
@@ -101,6 +121,13 @@ export const ClassManagement: React.FC = () => {
           room: formRoom || 'TBA',
           schedule: formSchedule || 'TBA',
           studentIds: selectedStudentIds,
+          section: {
+            id: section.id,
+            name: formSection,
+            school_year: formSchoolYear,
+            semester: formSemester,
+            created_at: new Date().toISOString(),
+          },
         })
       }
 
@@ -157,34 +184,34 @@ export const ClassManagement: React.FC = () => {
               const subjectObj = subjects.find((s) => s.id === cls.subject_id)
               const instructorName = instructors.find((i) => i.id === cls.instructor_id)?.name || 'Unassigned'
               return (
-                <div key={cls.id} className="class-card panel" style={{ border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '1.4rem 1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.6))', transition: 'border-color 0.2s ease, box-shadow 0.2s ease' }}>
+                <div key={cls.id} className="class-card panel" style={{ border: '1px solid #e2e8f0', borderRadius: '16px', padding: '1.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', background: '#ffffff', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)', transition: 'all 0.2s ease' }}>
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
                       <div style={{ flex: 1 }}>
-                        <span className="chip" style={{ fontSize: '0.72rem', fontWeight: 700, background: 'rgba(59, 130, 246, 0.12)', color: '#60a5fa', padding: '0.2rem 0.6rem', borderRadius: '6px', letterSpacing: '0.3px' }}>
+                        <span className="chip" style={{ fontSize: '0.75rem', fontWeight: 700, background: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', padding: '0.2rem 0.6rem', borderRadius: '6px' }}>
                           {subjectObj?.code || 'SUBJECT'}
                         </span>
-                        <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.1rem', color: '#f1f5f9', fontWeight: 600, lineHeight: 1.3 }}>{subjectTitle}</h4>
-                        <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>Section <strong style={{ color: '#cbd5e1' }}>{cls.section?.name || 'N/A'}</strong></p>
+                        <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.15rem', color: '#0f172a', fontWeight: 700, lineHeight: 1.3 }}>{subjectTitle}</h4>
+                        <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569' }}>Section <strong style={{ color: '#0f172a' }}>{cls.section?.name || 'N/A'}</strong></p>
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem', margin: '0.8rem 0 1.2rem 0', padding: '0.9rem', background: 'rgba(0,0,0,0.15)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.84rem', color: '#cbd5e1' }}>
-                        <User size={14} style={{ color: '#60a5fa', flexShrink: 0 }} />
-                        <span><strong style={{ color: '#e2e8f0' }}>Instructor:</strong> {instructorName}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', margin: '0.8rem 0 1.2rem 0', padding: '0.9rem 1rem', background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.86rem', color: '#334155' }}>
+                        <User size={15} style={{ color: '#2563eb', flexShrink: 0 }} />
+                        <span><strong style={{ color: '#0f172a' }}>Instructor:</strong> {instructorName}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.84rem', color: '#cbd5e1' }}>
-                        <MapPin size={14} style={{ color: '#a78bfa', flexShrink: 0 }} />
-                        <span><strong style={{ color: '#e2e8f0' }}>Room:</strong> {cls.room}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.86rem', color: '#334155' }}>
+                        <MapPin size={15} style={{ color: '#7c3aed', flexShrink: 0 }} />
+                        <span><strong style={{ color: '#0f172a' }}>Room:</strong> {cls.room}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.84rem', color: '#cbd5e1' }}>
-                        <Clock size={14} style={{ color: '#34d399', flexShrink: 0 }} />
-                        <span><strong style={{ color: '#e2e8f0' }}>Schedule:</strong> {cls.schedule}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.86rem', color: '#334155' }}>
+                        <Clock size={15} style={{ color: '#16a34a', flexShrink: 0 }} />
+                        <span><strong style={{ color: '#0f172a' }}>Schedule:</strong> {cls.schedule}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.84rem', color: '#cbd5e1' }}>
-                        <Users size={14} style={{ color: '#fbbf24', flexShrink: 0 }} />
-                        <span><strong style={{ color: '#e2e8f0' }}>Enrolled:</strong> <span className="chip" style={{ fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}>{cls.studentIds?.length || 0} Students</span></span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', fontSize: '0.86rem', color: '#334155' }}>
+                        <Users size={15} style={{ color: '#d97706', flexShrink: 0 }} />
+                        <span><strong style={{ color: '#0f172a' }}>Enrolled:</strong> <span className="chip" style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', background: '#e2e8f0', color: '#0f172a', fontWeight: 600 }}>{cls.studentIds?.length || 0} Students</span></span>
                       </div>
                     </div>
                   </div>
@@ -192,7 +219,7 @@ export const ClassManagement: React.FC = () => {
                   <div className="table-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button
                       type="button"
-                      style={{ flex: 1, padding: '0.5rem 0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.82rem' }}
+                      style={{ flex: 1, padding: '0.5rem 0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem', fontSize: '0.82rem', fontWeight: 600 }}
                       onClick={() => {
                         setSelectedClassId(cls.id)
                         setActiveSection('gradebook')
@@ -202,14 +229,14 @@ export const ClassManagement: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      style={{ padding: '0.5rem 0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem' }}
+                      style={{ padding: '0.5rem 0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600 }}
                       onClick={() => handleOpenEditModal(cls)}
                     >
                       <Pencil size={13} /> Edit
                     </button>
                     <button
                       type="button"
-                      style={{ padding: '0.5rem 0.8rem', cursor: 'pointer', backgroundColor: 'rgba(239, 68, 68, 0.15)', color: '#f87171', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem' }}
+                      style={{ padding: '0.5rem 0.8rem', cursor: 'pointer', backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600 }}
                       onClick={() => {
                         if (confirm(`Delete class ${subjectObj?.code} (${cls.section})?`)) {
                           deleteClass(cls.id)
@@ -233,7 +260,7 @@ export const ClassManagement: React.FC = () => {
           style={{
             position: 'fixed',
             inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backgroundColor: 'rgba(15, 23, 42, 0.6)',
             backdropFilter: 'blur(4px)',
             display: 'flex',
             alignItems: 'center',
@@ -243,7 +270,7 @@ export const ClassManagement: React.FC = () => {
           }}
         >
           <div
-            className="modal-card panel"
+            className="modal-card"
             onClick={(e) => e.stopPropagation()}
             style={{
               maxWidth: '620px',
@@ -252,22 +279,22 @@ export const ClassManagement: React.FC = () => {
               overflowY: 'auto',
               borderRadius: '20px',
               padding: '2rem',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)',
-              background: '#1e293b',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
             }}
           >
-            <h3 style={{ marginTop: 0, fontSize: '1.3rem', color: '#f8fafc', marginBottom: '1.2rem' }}>
+            <h3 style={{ marginTop: 0, fontSize: '1.3rem', color: '#0f172a', marginBottom: '1.2rem', fontWeight: 800 }}>
               {editingClassId ? 'Edit Class & Instructor Assignment' : 'Create New Class & Assign Instructor'}
             </h3>
             
             <form onSubmit={handleSubmitClass} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#94a3b8' }}>Select Subject *</label>
+                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Select Subject *</label>
                 <select
                   value={formSubjectId}
                   onChange={(e) => setFormSubjectId(e.target.value)}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155' }}
+                  style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
                 >
                   <option value="">Select a subject</option>
                   {subjects.map((sub) => (
@@ -281,11 +308,11 @@ export const ClassManagement: React.FC = () => {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#94a3b8' }}>Assign Instructor *</label>
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Assign Instructor *</label>
                   <select
                     value={formInstructorId}
                     onChange={(e) => setFormInstructorId(e.target.value)}
-                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155' }}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
                   >
                     <option value="">Select an instructor</option>
                     {instructors.map((inst) => (
@@ -298,62 +325,88 @@ export const ClassManagement: React.FC = () => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#94a3b8' }}>Section Name *</label>
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Section Name *</label>
                   <input
                     type="text"
                     placeholder="e.g. BSIT 2A"
                     value={formSection}
                     onChange={(e) => setFormSection(e.target.value)}
                     required
-                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155' }}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
                   />
                 </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#94a3b8' }}>Schedule</label>
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>School Year *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 2025-2026"
+                    value={formSchoolYear}
+                    onChange={(e) => setFormSchoolYear(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Semester *</label>
+                  <select
+                    value={formSemester}
+                    onChange={(e) => setFormSemester(e.target.value)}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
+                  >
+                    <option value="1st Semester">1st Semester</option>
+                    <option value="2nd Semester">2nd Semester</option>
+                    <option value="Summer Term">Summer Term</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Schedule</label>
                   <input
                     type="text"
                     placeholder="e.g. MWF 9:00 AM - 10:30 AM"
                     value={formSchedule}
                     onChange={(e) => setFormSchedule(e.target.value)}
-                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155' }}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#94a3b8' }}>Room / Venue</label>
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Room / Venue</label>
                   <input
                     type="text"
                     placeholder="e.g. Lab 302"
                     value={formRoom}
                     onChange={(e) => setFormRoom(e.target.value)}
-                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155' }}
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
                   />
                 </div>
               </div>
 
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <label style={{ fontSize: '0.82rem', color: '#94a3b8' }}>Enroll Students ({selectedStudentIds.length} selected)</label>
+                  <label style={{ fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Enroll Students ({selectedStudentIds.length} selected)</label>
                   {students.length > 0 && (
                     <button
                       type="button"
                       onClick={handleSelectAllStudents}
-                      style={{ background: 'none', border: 'none', color: '#60a5fa', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 600 }}
+                      style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 700 }}
                     >
                       {selectedStudentIds.length === students.length ? 'Deselect All' : 'Select All'}
                     </button>
                   )}
                 </div>
 
-                <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid #334155', borderRadius: '10px', padding: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: '#0f172a' }}>
+                <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1.5px solid #cbd5e1', borderRadius: '10px', padding: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: '#f8fafc' }}>
                   {students.length === 0 ? (
                     <span style={{ fontSize: '0.85rem', color: '#64748b' }}>No students registered yet. Add students in Student Management first.</span>
                   ) : (
                     students.map((st) => (
-                      <label key={st.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.88rem', cursor: 'pointer', color: '#e2e8f0' }}>
+                      <label key={st.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.88rem', cursor: 'pointer', color: '#0f172a' }}>
                         <input
                           type="checkbox"
                           checked={selectedStudentIds.includes(st.id)}
@@ -372,14 +425,14 @@ export const ClassManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  style={{ padding: '0.65rem 1.3rem', borderRadius: '10px', cursor: 'pointer', background: 'rgba(255,255,255,0.08)', color: '#f8fafc', border: 'none', fontWeight: 600 }}
+                  style={{ padding: '0.65rem 1.3rem', borderRadius: '10px', cursor: 'pointer', background: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', fontWeight: 600 }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="btn-primary"
-                  style={{ padding: '0.65rem 1.5rem', borderRadius: '10px', cursor: 'pointer' }}
+                  style={{ padding: '0.65rem 1.5rem', borderRadius: '10px', cursor: 'pointer', fontWeight: 700 }}
                 >
                   {editingClassId ? 'Save Changes' : 'Create Class'}
                 </button>

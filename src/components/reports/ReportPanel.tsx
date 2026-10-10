@@ -3,28 +3,50 @@ import { useReports } from '../../hooks/useReports'
 import { useAuth } from '../../hooks/useAuth'
 import type { ReportType } from '../../utils/types'
 import { downloadFile } from '../../utils/helpers'
-import { FileText, ClipboardList, BarChart3, Sparkles, FilePenLine, Printer, Download, Check } from 'lucide-react'
+import {
+  FileText,
+  ClipboardList,
+  BarChart3,
+  Sparkles,
+  FilePenLine,
+  Printer,
+  Download,
+  Check,
+  AlertTriangle,
+  Users,
+  Award,
+} from 'lucide-react'
 
 const reportTypesMeta: { type: ReportType; icon: React.ComponentType<any>; description: string }[] = [
   {
-    type: 'Student Grade Report',
-    icon: FileText,
-    description: 'Individual student grades, GPA equivalents, and academic standing per class.',
+    type: 'Student Performance Report',
+    icon: Award,
+    description: 'Individual student performance metrics, preliminary-to-final growth, and subject-specific standing.',
   },
   {
-    type: 'Class Record',
-    icon: ClipboardList,
-    description: 'Complete class record with all enrolled students, scores, and averages.',
-  },
-  {
-    type: 'Academic Performance Report',
+    type: 'Class Performance Report',
     icon: BarChart3,
-    description: 'Overall academic performance analysis, trends, and class-wide statistics.',
+    description: 'Class-wide evaluation, grade averages, distribution curves, and cohort comparisons.',
   },
   {
-    type: 'Prediction Report',
+    type: 'Instructor / Class Summary',
+    icon: Users,
+    description: 'Overview of assigned classes, teaching schedules, enrolled student counts, and completion status.',
+  },
+  {
+    type: 'At-Risk Student Report',
+    icon: AlertTriangle,
+    description: 'Flagged watchlist of students at risk or failing, with identified weak areas and required final targets.',
+  },
+  {
+    type: 'Grade Summary',
+    icon: ClipboardList,
+    description: 'Comprehensive tabulation of Prelim, Midterm, and Final weighted averages and GPA equivalents.',
+  },
+  {
+    type: 'Predictive Analytics Report',
     icon: Sparkles,
-    description: 'AI-driven prediction of student outcomes, risk factors, and recommendations.',
+    description: 'Predictive AI model analysis identifying high-performing, on-track, and at-risk students.',
   },
 ]
 
@@ -32,6 +54,7 @@ export const ReportPanel: React.FC = () => {
   const { activeUser } = useAuth()
   const { reports, generateReport, printReport, reportText } = useReports()
   const [selectedType, setSelectedType] = useState<ReportType | null>(null)
+  const [formatNotice, setFormatNotice] = useState<string | null>(null)
 
   function handleGenerate() {
     if (!selectedType) {
@@ -39,6 +62,8 @@ export const ReportPanel: React.FC = () => {
       return
     }
     generateReport(selectedType, activeUser?.name ?? 'System')
+    setFormatNotice(`Report "${selectedType}" successfully compiled and saved to history!`)
+    setTimeout(() => setFormatNotice(null), 3500)
   }
 
   function handleExportPDF() {
@@ -56,25 +81,63 @@ export const ReportPanel: React.FC = () => {
       return
     }
     generateReport(selectedType, activeUser?.name ?? 'System')
-    downloadFile('trackademic-report.csv', reportText(), 'text/csv')
+    downloadFile(
+      `trackademic-${selectedType.toLowerCase().replace(/[\s/]+/g, '-')}.csv`,
+      reportText(),
+      'text/csv',
+    )
   }
 
   return (
-    <section className="panel" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <section
+      className="panel"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.8rem',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 4px 16px -2px rgba(15, 23, 42, 0.05)',
+        borderRadius: '16px',
+        padding: '2rem',
+      }}
+    >
       {/* Header */}
-      <div className="card-heading">
+      <div className="card-heading" style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: '1.2rem' }}>
         <div>
-          <h3>Reports</h3>
-          <span className="chip">Select a report type, then generate or export</span>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#0f172a', fontSize: '1.4rem', fontWeight: 800 }}>
+            <FileText size={24} color="#2563eb" /> Academic Reports & Analytics Export
+          </h3>
+          <span className="chip" style={{ marginTop: '0.4rem', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0' }}>
+            Select an official report type to generate, print, or download (PDF / Excel CSV)
+          </span>
         </div>
       </div>
 
+      {formatNotice && (
+        <div
+          style={{
+            background: '#f0fdf4',
+            border: '1.5px solid #86efac',
+            borderRadius: '12px',
+            padding: '1rem 1.4rem',
+            color: '#15803d',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.6rem',
+            fontWeight: 600,
+          }}
+        >
+          <Check size={18} /> {formatNotice}
+        </div>
+      )}
+
       {/* Step 1: Select Report Type */}
       <div>
-        <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: '0 0 0.8rem 0', fontWeight: 600 }}>
+        <p style={{ fontSize: '0.95rem', color: '#0f172a', margin: '0 0 0.9rem 0', fontWeight: 700 }}>
           Step 1 — Select Report Type
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
           {reportTypesMeta.map((item) => {
             const isSelected = selectedType === item.type
             const IconComp = item.icon
@@ -87,39 +150,56 @@ export const ReportPanel: React.FC = () => {
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'flex-start',
-                  gap: '0.5rem',
-                  padding: '1.1rem 1.2rem',
+                  gap: '0.6rem',
+                  padding: '1.3rem',
                   borderRadius: '14px',
                   cursor: 'pointer',
                   textAlign: 'left',
-                  background: isSelected
-                    ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(139, 92, 246, 0.12))'
-                    : 'rgba(255,255,255,0.03)',
-                  border: isSelected
-                    ? '2px solid #3b82f6'
-                    : '1px solid rgba(255,255,255,0.08)',
-                  color: '#f8fafc',
+                  background: isSelected ? '#eff6ff' : '#ffffff',
+                  border: isSelected ? '2px solid #2563eb' : '1.5px solid #e2e8f0',
+                  boxShadow: isSelected
+                    ? '0 6px 20px rgba(37, 99, 235, 0.15)'
+                    : '0 2px 8px rgba(15, 23, 42, 0.03)',
                   transition: 'all 0.2s ease',
-                  boxShadow: isSelected ? '0 0 16px rgba(59, 130, 246, 0.15)' : 'none',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <IconComp size={20} style={{ color: isSelected ? '#60a5fa' : '#64748b' }} />
-                  <strong style={{ fontSize: '0.95rem' }}>{item.type}</strong>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <div
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      background: isSelected ? '#dbeafe' : '#f1f5f9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: isSelected ? '#1d4ed8' : '#2563eb',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <IconComp size={20} />
+                  </div>
+                  <strong style={{ fontSize: '1rem', color: isSelected ? '#1d4ed8' : '#0f172a', fontWeight: 700 }}>
+                    {item.type}
+                  </strong>
                 </div>
-                <span style={{ fontSize: '0.78rem', color: isSelected ? '#93c5fd' : '#64748b', lineHeight: 1.4 }}>
+                <span style={{ fontSize: '0.85rem', color: isSelected ? '#1e40af' : '#475569', lineHeight: 1.5 }}>
                   {item.description}
                 </span>
                 {isSelected && (
                   <span
                     style={{
-                      marginTop: '0.3rem',
-                      fontSize: '0.72rem',
+                      marginTop: '0.4rem',
+                      fontSize: '0.75rem',
                       fontWeight: 700,
-                      color: '#3b82f6',
+                      color: '#1d4ed8',
+                      background: '#dbeafe',
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '999px',
+                      border: '1px solid #bfdbfe',
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px',
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
                       gap: '0.3rem',
                     }}
@@ -135,10 +215,10 @@ export const ReportPanel: React.FC = () => {
 
       {/* Step 2: Actions */}
       <div>
-        <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: '0 0 0.8rem 0', fontWeight: 600 }}>
-          Step 2 — Generate or Export
+        <p style={{ fontSize: '0.95rem', color: '#0f172a', margin: '0 0 0.9rem 0', fontWeight: 700 }}>
+          Step 2 — Generate, Print, or Download
           {selectedType && (
-            <span style={{ color: '#60a5fa', marginLeft: '0.5rem', fontWeight: 400 }}>
+            <span style={{ color: '#2563eb', marginLeft: '0.5rem', fontWeight: 600 }}>
               ({selectedType})
             </span>
           )}
@@ -150,66 +230,84 @@ export const ReportPanel: React.FC = () => {
             onClick={handleGenerate}
             disabled={!selectedType}
             style={{
-              padding: '0.65rem 1.4rem',
+              padding: '0.75rem 1.5rem',
               cursor: selectedType ? 'pointer' : 'not-allowed',
-              opacity: selectedType ? 1 : 0.45,
+              opacity: selectedType ? 1 : 0.5,
               borderRadius: '10px',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
+              gap: '0.5rem',
+              fontWeight: 700,
+              fontSize: '0.95rem',
             }}
           >
-            <FilePenLine size={16} /> Generate Report
+            <FilePenLine size={18} /> Generate Report
           </button>
           <button
             type="button"
             onClick={handleExportPDF}
             disabled={!selectedType}
             style={{
-              padding: '0.65rem 1.4rem',
+              padding: '0.75rem 1.5rem',
               cursor: selectedType ? 'pointer' : 'not-allowed',
-              opacity: selectedType ? 1 : 0.45,
+              opacity: selectedType ? 1 : 0.5,
               borderRadius: '10px',
-              background: 'rgba(255,255,255,0.06)',
-              color: '#f8fafc',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: '#ffffff',
+              color: '#0f172a',
+              border: '1.5px solid #cbd5e1',
+              boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
+              gap: '0.5rem',
+              fontWeight: 600,
+              fontSize: '0.95rem',
             }}
           >
-            <Printer size={16} /> View / Print PDF
+            <Printer size={18} color="#2563eb" /> View / Print PDF
           </button>
           <button
             type="button"
             onClick={handleExportCSV}
             disabled={!selectedType}
             style={{
-              padding: '0.65rem 1.4rem',
+              padding: '0.75rem 1.5rem',
               cursor: selectedType ? 'pointer' : 'not-allowed',
-              opacity: selectedType ? 1 : 0.45,
+              opacity: selectedType ? 1 : 0.5,
               borderRadius: '10px',
-              background: 'rgba(255,255,255,0.06)',
-              color: '#f8fafc',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: '#ffffff',
+              color: '#0f172a',
+              border: '1.5px solid #cbd5e1',
+              boxShadow: '0 2px 6px rgba(15, 23, 42, 0.04)',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.4rem',
+              gap: '0.5rem',
+              fontWeight: 600,
+              fontSize: '0.95rem',
             }}
           >
-            <Download size={16} /> Export Excel (CSV)
+            <Download size={18} color="#16a34a" /> Download Report (Excel CSV)
           </button>
         </div>
       </div>
 
       {/* Generated Reports History */}
       <div>
-        <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: '0 0 0.8rem 0', fontWeight: 600 }}>
-          Report History
+        <p style={{ fontSize: '0.95rem', color: '#0f172a', margin: '0 0 0.9rem 0', fontWeight: 700 }}>
+          Generated Reports History ({reports.length})
         </p>
-        <div className="report-list" style={{ background: 'rgba(0,0,0,0.15)', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div
+          className="report-list"
+          style={{
+            background: '#f8fafc',
+            borderRadius: '14px',
+            padding: '1.2rem',
+            border: '1px solid #e2e8f0',
+          }}
+        >
           {reports.length === 0 ? (
-            <span style={{ color: '#64748b', fontSize: '0.88rem' }}>No reports generated yet. Select a report type above to get started.</span>
+            <span style={{ color: '#64748b', fontSize: '0.9rem' }}>
+              No reports generated yet. Select a report type above to get started.
+            </span>
           ) : (
             reports.map((report) => (
               <div
@@ -218,21 +316,45 @@ export const ReportPanel: React.FC = () => {
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  padding: '0.7rem 0.8rem',
-                  borderRadius: '8px',
-                  background: 'rgba(255,255,255,0.03)',
-                  marginBottom: '0.5rem',
+                  padding: '1rem 1.2rem',
+                  borderRadius: '12px',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  boxShadow: '0 2px 6px rgba(15, 23, 42, 0.02)',
+                  marginBottom: '0.6rem',
+                  flexWrap: 'wrap',
+                  gap: '0.6rem',
                 }}
               >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                  <strong style={{ fontSize: '0.9rem', color: '#e2e8f0' }}>{report.title}</strong>
-                  <small style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                    {report.created_at} • by {report.generated_by}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                  <strong style={{ fontSize: '0.96rem', color: '#0f172a', fontWeight: 700 }}>{report.title}</strong>
+                  <small style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                    {report.created_at} • Generated by <strong style={{ color: '#334155' }}>{report.generated_by}</strong>
                   </small>
                 </div>
-                <span className="chip" style={{ fontSize: '0.7rem', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}>
-                  {report.type}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <span className="chip" style={{ fontSize: '0.78rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', fontWeight: 600 }}>
+                    {report.type}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={printReport}
+                    style={{
+                      background: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                      padding: '0.4rem 0.6rem',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Print"
+                  >
+                    <Printer size={16} />
+                  </button>
+                </div>
               </div>
             ))
           )}
@@ -242,3 +364,4 @@ export const ReportPanel: React.FC = () => {
   )
 }
 
+export default ReportPanel
