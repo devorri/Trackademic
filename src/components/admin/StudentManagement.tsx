@@ -1,12 +1,16 @@
 import React, { useState } from 'react'
-import { Eye, EyeOff, Search, Plus, User, FileText, X } from 'lucide-react'
+import { Eye, EyeOff, Search, Plus, User, FileText, X, BookOpen, Check } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { blankStudent } from '../../context/DataContext'
 import type { Student } from '../../utils/types'
+import { getSubjectTitle } from '../../utils/helpers'
 
 export const StudentManagement: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [selectedStudentForRecord, setSelectedStudentForRecord] = useState<Student | null>(null)
+  const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null)
+  const [selectedClassIdsForEnroll, setSelectedClassIdsForEnroll] = useState<string[]>([])
+  const [isSavingEnrollment, setIsSavingEnrollment] = useState(false)
 
   const {
     studentForm,
@@ -17,14 +21,58 @@ export const StudentManagement: React.FC = () => {
     setSearchTerm,
     filteredStudents,
     students,
+    classes,
+    subjects,
     allComputedRows,
     handleSaveStudent,
     deleteStudent,
+    enrollStudentInClasses,
+    updateClass,
   } = useData()
 
   function handleCancelEdit() {
     setEditingStudentId(null)
     setStudentForm(blankStudent)
+  }
+
+  function handleOpenEnrollModal(student: Student) {
+    setEnrollingStudent(student)
+    const enrolledIds = classes
+      .filter((c) => (c.studentIds || []).includes(student.id))
+      .map((c) => c.id)
+    setSelectedClassIdsForEnroll(enrolledIds)
+  }
+
+  function handleToggleEnrollClass(classId: string) {
+    setSelectedClassIdsForEnroll((prev) =>
+      prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId],
+    )
+  }
+
+  async function handleSaveEnrollments() {
+    if (!enrollingStudent) return
+    setIsSavingEnrollment(true)
+    const studentId = enrollingStudent.id
+
+    try {
+      for (const cls of classes) {
+        const isCurrentlyEnrolled = (cls.studentIds || []).includes(studentId)
+        const shouldBeEnrolled = selectedClassIdsForEnroll.includes(cls.id)
+
+        if (!isCurrentlyEnrolled && shouldBeEnrolled) {
+          await enrollStudentInClasses(studentId, [cls.id])
+        } else if (isCurrentlyEnrolled && !shouldBeEnrolled) {
+          const updatedStudentIds = (cls.studentIds || []).filter((id) => id !== studentId)
+          await updateClass(cls.id, { studentIds: updatedStudentIds })
+        }
+      }
+      setEnrollingStudent(null)
+    } catch (err) {
+      console.error('Failed to save enrollments:', err)
+      alert('Failed to update enrollments')
+    } finally {
+      setIsSavingEnrollment(false)
+    }
   }
 
   // Find enrolled records for selected student
@@ -206,6 +254,7 @@ export const StudentManagement: React.FC = () => {
                   <th>Student & ID</th>
                   <th>Year</th>
                   <th>Course & Section</th>
+                  <th>Enrolled Subjects</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -213,7 +262,7 @@ export const StudentManagement: React.FC = () => {
               <tbody>
                 {filteredStudents.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', color: '#9ca3af', padding: '1.8rem' }}>
+                    <td colSpan={6} style={{ textAlign: 'center', color: '#9ca3af', padding: '1.8rem' }}>
                       No student records match "{searchTerm}"
                     </td>
                   </tr>
@@ -228,6 +277,9 @@ export const StudentManagement: React.FC = () => {
                         : student.year_level === 3
                         ? '3rd Year'
                         : '4th Year'
+
+                    const studentEnrolledClasses = classes.filter((c) => (c.studentIds || []).includes(student.id))
+                    const enrolledCount = studentEnrolledClasses.length
 
                     return (
                       <tr key={student.id}>
@@ -246,6 +298,29 @@ export const StudentManagement: React.FC = () => {
                           </strong>
                         </td>
                         <td>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEnrollModal(student)}
+                            className="chip"
+                            style={{
+                              background: enrolledCount > 0 ? '#eff6ff' : '#f8fafc',
+                              color: enrolledCount > 0 ? '#1d4ed8' : '#64748b',
+                              border: enrolledCount > 0 ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
+                              cursor: 'pointer',
+                              fontWeight: 700,
+                              padding: '0.25rem 0.65rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.35rem',
+                              borderRadius: '8px',
+                            }}
+                            title="Click to manage enrolled subjects"
+                          >
+                            <BookOpen size={12} />
+                            {enrolledCount} {enrolledCount === 1 ? 'Subject' : 'Subjects'}
+                          </button>
+                        </td>
+                        <td>
                           <span
                             style={{
                               padding: '0.2rem 0.65rem',
@@ -261,6 +336,22 @@ export const StudentManagement: React.FC = () => {
                         </td>
                         <td>
                           <div className="table-actions">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEnrollModal(student)}
+                              style={{
+                                background: 'rgba(16, 185, 129, 0.15)',
+                                color: '#059669',
+                                padding: '0.35rem 0.7rem',
+                                fontSize: '0.8rem',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.3rem',
+                                fontWeight: 700,
+                              }}
+                            >
+                              <BookOpen size={13} /> Enroll
+                            </button>
                             <button
                               type="button"
                               onClick={() => setSelectedStudentForRecord(student)}
@@ -449,6 +540,171 @@ export const StudentManagement: React.FC = () => {
                   </table>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Enroll in Subjects Modal */}
+      {enrollingStudent && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 110,
+            padding: '1rem',
+          }}
+          onClick={() => setEnrollingStudent(null)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              borderRadius: '20px',
+              maxWidth: '650px',
+              width: '100%',
+              padding: '2rem',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.2rem' }}>
+              <div>
+                <span className="chip" style={{ color: '#2563eb', background: '#eff6ff', border: '1px solid #dbeafe', fontWeight: 700 }}>
+                  Subject & Class Enrollment
+                </span>
+                <h3 style={{ margin: '0.4rem 0 0.2rem 0', fontSize: '1.35rem', color: '#0f172a', fontWeight: 800 }}>
+                  Enroll {enrollingStudent.name}
+                </h3>
+                <small style={{ color: '#64748b', fontSize: '0.88rem' }}>
+                  Student ID: <strong style={{ color: '#0f172a' }}>{enrollingStudent.student_no || enrollingStudent.studentNo}</strong> • Course:{' '}
+                  <strong style={{ color: '#0f172a' }}>{enrollingStudent.course} {enrollingStudent.section_label}</strong>
+                </small>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEnrollingStudent(null)}
+                style={{
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  color: '#475569',
+                  padding: '0.45rem 0.8rem',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.88rem', color: '#475569', margin: '0 0 1rem 0' }}>
+              Select the active subjects and classes this student will attend. Enrolling will automatically generate gradebook records and predictive analytics for this student.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '320px', overflowY: 'auto', paddingRight: '0.3rem' }}>
+              {classes.length === 0 ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                  <p style={{ margin: 0, color: '#64748b' }}>No active classes created yet. Please create classes in Subjects & Classes first.</p>
+                </div>
+              ) : (
+                classes.map((cls) => {
+                  const subjectTitle = getSubjectTitle(subjects, cls.subject_id)
+                  const isChecked = selectedClassIdsForEnroll.includes(cls.id)
+
+                  return (
+                    <label
+                      key={cls.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.85rem 1.1rem',
+                        borderRadius: '12px',
+                        border: isChecked ? '1.5px solid #3b82f6' : '1px solid #e2e8f0',
+                        background: isChecked ? '#eff6ff' : '#f8fafc',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleEnrollClass(cls.id)}
+                          style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                        <div>
+                          <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.95rem' }}>
+                            {subjectTitle}
+                          </div>
+                          <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.15rem' }}>
+                            Section: <strong style={{ color: '#334155' }}>{cls.section?.name || 'N/A'}</strong> • Schedule: {cls.schedule || 'TBA'} • Room: {cls.room || 'TBA'}
+                          </div>
+                        </div>
+                      </div>
+                      <span
+                        className="chip"
+                        style={{
+                          fontSize: '0.75rem',
+                          background: isChecked ? '#dcfce7' : '#f1f5f9',
+                          color: isChecked ? '#15803d' : '#64748b',
+                          border: isChecked ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {isChecked ? 'Enrolled' : 'Not Enrolled'}
+                      </span>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.4rem', borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
+              <span style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                <strong style={{ color: '#0f172a' }}>{selectedClassIdsForEnroll.length}</strong> subject(s) selected
+              </span>
+              <div style={{ display: 'flex', gap: '0.6rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setEnrollingStudent(null)}
+                  style={{
+                    padding: '0.55rem 1rem',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    background: '#f8fafc',
+                    color: '#475569',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleSaveEnrollments}
+                  disabled={isSavingEnrollment}
+                  style={{
+                    padding: '0.55rem 1.4rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.4rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  <Check size={16} />
+                  {isSavingEnrollment ? 'Saving...' : 'Save Enrollments'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

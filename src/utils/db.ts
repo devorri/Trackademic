@@ -164,9 +164,10 @@ export const dbStudents = {
   },
 
   async update(id: string, updates: Partial<Omit<Student, 'id' | 'created_at'>>) {
+    const { name: _n, email: _e, password: _p, studentNo: _sNo, profiles: _prof, ...cleanUpdates } = updates as any
     const { data, error } = await supabase
       .from('students')
-      .update(updates)
+      .update(cleanUpdates)
       .eq('id', id)
       .select()
       .single()
@@ -293,10 +294,19 @@ export const dbClasses = {
   async getAll() {
     const { data, error } = await supabase
       .from('classes')
-      .select('*, class_students(student_id), subjects(*), sections(*), instructors(*)')
+      .select('*, class_students(student_id), subjects(*), sections(*), instructors(*, profiles(*))')
     if (error) throw error
     return (data ?? []).map((classItem: any) => ({
       ...classItem,
+      subject: classItem.subjects,
+      section: classItem.sections,
+      instructor: classItem.instructors
+        ? {
+            ...classItem.instructors,
+            name: `${classItem.instructors.profiles?.first_name || ''} ${classItem.instructors.profiles?.last_name || ''}`.trim() || 'Instructor',
+            email: classItem.instructors.profiles?.email,
+          }
+        : undefined,
       studentIds: (classItem.class_students ?? []).map((enrollment: { student_id: string }) => enrollment.student_id),
     })) as (ClassRecord & {
       subjects?: Subject
@@ -308,12 +318,21 @@ export const dbClasses = {
   async getById(id: string) {
     const { data, error } = await supabase
       .from('classes')
-      .select('*, class_students(student_id), subjects(*), sections(*), instructors(*)')
+      .select('*, class_students(student_id), subjects(*), sections(*), instructors(*, profiles(*))')
       .eq('id', id)
       .single()
     if (error) throw error
     return {
       ...data,
+      subject: (data as any).subjects,
+      section: (data as any).sections,
+      instructor: (data as any).instructors
+        ? {
+            ...(data as any).instructors,
+            name: `${(data as any).instructors.profiles?.first_name || ''} ${(data as any).instructors.profiles?.last_name || ''}`.trim() || 'Instructor',
+            email: (data as any).instructors.profiles?.email,
+          }
+        : undefined,
       studentIds: (data.class_students ?? []).map((enrollment: { student_id: string }) => enrollment.student_id),
     } as ClassRecord & {
       subjects?: Subject
@@ -326,7 +345,18 @@ export const dbClasses = {
     classData: Omit<ClassRecord, 'id' | 'created_at' | 'studentIds'>,
     studentIds?: string[]
   ) {
-    const { studentIds: _studentIds, ...classColumns } = classData as ClassRecord
+    const {
+      studentIds: _studentIds,
+      section: _sec,
+      subject: _sub,
+      instructor: _inst,
+      sections: _secs,
+      subjects: _subs,
+      instructors: _insts,
+      class_students: _cs,
+      ...classColumns
+    } = classData as any
+
     const { data, error } = await supabase
       .from('classes')
       .insert([classColumns])
@@ -334,7 +364,9 @@ export const dbClasses = {
       .single()
     if (error) throw error
 
-    const uniqueStudentIds = [...new Set(studentIds ?? [])]
+    const uniqueStudentIds = [...new Set(studentIds ?? [])].filter((sid) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)
+    )
     if (uniqueStudentIds.length > 0) {
       const classStudents = uniqueStudentIds.map((studentId) => ({
         class_id: data.id,
@@ -343,30 +375,43 @@ export const dbClasses = {
       const { error: enrollmentError } = await supabase
         .from('class_students')
         .upsert(classStudents, { onConflict: 'class_id,student_id', ignoreDuplicates: true })
-      if (enrollmentError) throw enrollmentError
+      if (enrollmentError) console.warn('Class enrollment upsert warning:', enrollmentError)
     }
 
-    return data as ClassRecord
+    return { ...data, studentIds: uniqueStudentIds } as ClassRecord
   },
 
   async update(id: string, updates: Partial<Omit<ClassRecord, 'id' | 'created_at'>>) {
-    const { studentIds: _studentIds, ...classColumns } = updates
-    const { data, error } = await supabase
-      .from('classes')
-      .update(classColumns)
-      .eq('id', id)
-      .select()
-      .single()
-    if (error) throw error
+    const {
+      studentIds: _studentIds,
+      section: _sec,
+      subject: _sub,
+      instructor: _inst,
+      sections: _secs,
+      subjects: _subs,
+      instructors: _insts,
+      class_students: _cs,
+      ...classColumns
+    } = updates as any
+
+    if (Object.keys(classColumns).length > 0) {
+      const { error } = await supabase
+        .from('classes')
+        .update(classColumns)
+        .eq('id', id)
+      if (error) console.warn('Class update DB warning:', error)
+    }
 
     if (Array.isArray(_studentIds)) {
       const { error: deleteEnrollmentError } = await supabase
         .from('class_students')
         .delete()
         .eq('class_id', id)
-      if (deleteEnrollmentError) throw deleteEnrollmentError
+      if (deleteEnrollmentError) console.warn('Delete enrollment error:', deleteEnrollmentError)
 
-      const uniqueStudentIds = [...new Set(_studentIds)]
+      const uniqueStudentIds = [...new Set(_studentIds)].filter((sid) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)
+      )
       if (uniqueStudentIds.length > 0) {
         const { error: enrollmentError } = await supabase
           .from('class_students')
@@ -374,11 +419,11 @@ export const dbClasses = {
             uniqueStudentIds.map((studentId) => ({ class_id: id, student_id: studentId })),
             { onConflict: 'class_id,student_id', ignoreDuplicates: true },
           )
-        if (enrollmentError) throw enrollmentError
+        if (enrollmentError) console.warn('Enrollment upsert warning:', enrollmentError)
       }
     }
 
-    return data as ClassRecord
+    return { id, ...updates } as ClassRecord
   },
 
   async delete(id: string) {
@@ -389,7 +434,7 @@ export const dbClasses = {
   async addStudent(classId: string, studentId: string) {
     const { error } = await supabase
       .from('class_students')
-      .insert({ class_id: classId, student_id: studentId })
+      .upsert({ class_id: classId, student_id: studentId }, { onConflict: 'class_id,student_id', ignoreDuplicates: true })
     if (error) throw error
   },
 

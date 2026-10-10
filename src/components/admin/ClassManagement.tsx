@@ -79,50 +79,80 @@ export const ClassManagement: React.FC = () => {
     }
 
     try {
-      const existingInstructor = await dbInstructors.getByProfileId(formInstructorId)
-      const instructor = existingInstructor ?? await dbInstructors.create({
-        profile_id: formInstructorId,
-        employee_no: `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-        department: undefined,
-      })
+      // 1. Resolve instructor_id safely
+      let instructorIdToUse = formInstructorId
+      const existingInst = await dbInstructors.getById(formInstructorId).catch(() => null)
+      if (existingInst) {
+        instructorIdToUse = existingInst.id
+      } else {
+        const matchedInst = instructors.find((i) => i.id === formInstructorId) as (typeof instructors[number] & { profile_id?: string }) | undefined
+        const profileId = matchedInst?.profile_id || formInstructorId
+        const existingByProfile = await dbInstructors.getByProfileId(profileId).catch(() => null)
+        if (existingByProfile) {
+          instructorIdToUse = existingByProfile.id
+        } else if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(profileId)) {
+          try {
+            const created = await dbInstructors.create({
+              profile_id: profileId,
+              employee_no: `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+              department: undefined,
+            })
+            instructorIdToUse = created.id
+          } catch (e) {
+            console.warn('Instructor creation fallback:', e)
+          }
+        }
+      }
 
       if (editingClassId) {
-        await updateClass(editingClassId, {
-          subject_id: formSubjectId,
-          instructor_id: instructor.id,
-          room: formRoom || 'TBA',
-          schedule: formSchedule || 'TBA',
-          studentIds: selectedStudentIds,
-          section: {
-            id: 'sec-' + editingClassId,
+        const cls = classes.find((c) => c.id === editingClassId)
+        const sectionId = cls?.section_id || cls?.section?.id || ('sec-' + editingClassId)
+
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sectionId)) {
+          await dbSections.update(sectionId, {
             name: formSection,
             school_year: formSchoolYear,
             semester: formSemester,
-            created_at: new Date().toISOString(),
-          },
-        })
-      } else {
-        const section = await dbSections.create({
-          name: formSection,
-          school_year: formSchoolYear,
-          semester: formSemester,
-        }).catch(() => ({
-          id: 'sec-' + crypto.randomUUID().slice(0, 8),
-          name: formSection,
-          school_year: formSchoolYear,
-          semester: formSemester,
-          created_at: new Date().toISOString(),
-        }))
+          }).catch(() => null)
+        }
 
-        await createClass({
+        await updateClass(editingClassId, {
           subject_id: formSubjectId,
-          section_id: section.id,
-          instructor_id: instructor.id,
+          section_id: sectionId,
+          instructor_id: instructorIdToUse,
           room: formRoom || 'TBA',
           schedule: formSchedule || 'TBA',
           studentIds: selectedStudentIds,
           section: {
-            id: section.id,
+            id: sectionId,
+            name: formSection,
+            school_year: formSchoolYear,
+            semester: formSemester,
+            created_at: cls?.section?.created_at || new Date().toISOString(),
+          },
+        })
+      } else {
+        let sectionId: string = crypto.randomUUID()
+        try {
+          const section = await dbSections.create({
+            name: formSection,
+            school_year: formSchoolYear,
+            semester: formSemester,
+          })
+          if (section?.id) sectionId = section.id
+        } catch (e) {
+          console.warn('Section create fallback:', e)
+        }
+
+        await createClass({
+          subject_id: formSubjectId,
+          section_id: sectionId,
+          instructor_id: instructorIdToUse,
+          room: formRoom || 'TBA',
+          schedule: formSchedule || 'TBA',
+          studentIds: selectedStudentIds,
+          section: {
+            id: sectionId,
             name: formSection,
             school_year: formSchoolYear,
             semester: formSemester,
@@ -134,7 +164,7 @@ export const ClassManagement: React.FC = () => {
       setIsModalOpen(false)
     } catch (error) {
       console.error('Error submitting class:', error)
-      alert('Failed to save class')
+      alert('Failed to save class: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 

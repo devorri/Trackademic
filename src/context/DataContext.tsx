@@ -123,9 +123,11 @@ interface DataContextType {
   handleSaveStudent: (event: React.FormEvent) => Promise<void>
   deleteStudent: (studentId: string) => Promise<void>
   handleSaveSubject: (event: React.FormEvent) => Promise<void>
+  deleteSubject: (subjectId: string) => Promise<void>
   createClass: (classData: Omit<ClassRecord, 'id' | 'created_at'>) => Promise<ClassRecord>
   updateClass: (classId: string, classData: Partial<ClassRecord>) => Promise<void>
   deleteClass: (classId: string) => Promise<void>
+  enrollStudentInClasses: (studentId: string, classIds: string[]) => Promise<void>
   createClassFromSubject: (subject: Subject) => Promise<void>
   updateGrade: (classId: string, studentId: string, field: keyof GradeRow, value: number) => void
   updateDetailedGrade: (
@@ -174,24 +176,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedClassId, setSelectedClassId] = useState<string | null>(initialClasses[0]?.id || null)
   const [activeSection, setActiveSection] = useState<DashboardSection>('overview')
 
+  const [dbInstructorsList, setDbInstructorsList] = useState<any[]>([])
+
   // Load data from database on mount if available, else keep rich defaults
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [profilesData, studentsData, subjectsData, classesData] = await Promise.all([
+        const [profilesData, studentsData, instructorsData, subjectsData, classesData] = await Promise.all([
           dbProfiles.getAll().catch(() => []),
           dbStudents.getAll().catch(() => []),
+          dbInstructors.getAll().catch(() => []),
           dbSubjects.getAll().catch(() => []),
           dbClasses.getAll().catch(() => []),
         ])
 
+        if (instructorsData && instructorsData.length > 0) {
+          setDbInstructorsList(instructorsData)
+        }
+
         if (profilesData && profilesData.length > 0) {
           const usersData: User[] = profilesData.map((profile) => ({
             id: profile.id,
-            name: `${profile.first_name} ${profile.last_name}`,
+            name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'User',
             email: profile.email,
             role: profile.role,
             status: profile.status,
+            password: profile.password_plain,
           }))
           setUsers((prev) => {
             const combined = [...usersData]
@@ -204,11 +214,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           })
         }
 
+        let currentStudents: Student[] = []
         if (studentsData && studentsData.length > 0) {
+          currentStudents = (studentsData as any[]).map((s) => ({
+            id: s.id,
+            profile_id: s.profile_id,
+            student_no: s.student_no,
+            studentNo: s.student_no,
+            name: `${s.profiles?.first_name || ''} ${s.profiles?.last_name || ''}`.trim() || 'Student',
+            email: s.profiles?.email || '',
+            course: s.course || 'BSIT',
+            section_label: s.section_label || 'BSIT-4A',
+            year_level: s.year_level || 4,
+            created_at: s.created_at,
+            password: s.profiles?.password_plain || 'password123',
+          }))
+
           setStudents((prev) => {
             const map = new Map<string, Student>()
             prev.forEach((s) => map.set(s.id, s))
-            ;(studentsData as any[]).forEach((s) => map.set(s.id, s))
+            currentStudents.forEach((s) => map.set(s.id, s))
             return Array.from(map.values())
           })
         }
@@ -227,7 +252,71 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const map = new Map<string, ClassRecord>()
             prev.forEach((c) => map.set(c.id, c))
             ;(classesData as any[]).forEach((c) => map.set(c.id, c))
-            return Array.from(map.values())
+            const allClasses = Array.from(map.values())
+
+            // Initialize grade rows for all enrolled students
+            setGrades((prevGrades) => {
+              const nextGrades = { ...prevGrades }
+              for (const cls of allClasses) {
+                const enrolledIds = cls.studentIds || []
+                const existingRows = nextGrades[cls.id] || []
+                const existingSet = new Set(existingRows.map((r) => r.studentId))
+                const updatedRows = [...existingRows]
+
+                for (const sid of enrolledIds) {
+                  if (!existingSet.has(sid)) {
+                    const st = currentStudents.find((s) => s.id === sid) || initialStudents.find((s) => s.id === sid)
+                    updatedRows.push({
+                      studentId: sid,
+                      student_name: st?.name || 'Student',
+                      quizzes: 80,
+                      assignments: 82,
+                      activities: 80,
+                      midtermExam: 82,
+                      finalExam: 85,
+                      historical: 80,
+                    })
+                  }
+                }
+                if (updatedRows.length > 0) {
+                  nextGrades[cls.id] = updatedRows
+                }
+              }
+              return nextGrades
+            })
+
+            // Initialize detailed sheets for all enrolled students
+            setDetailedGradingSheets((prevSheets) => {
+              const nextSheets = { ...prevSheets }
+              for (const cls of allClasses) {
+                const enrolledIds = cls.studentIds || []
+                const existingSheet = nextSheets[cls.id] || []
+                const existingSet = new Set(existingSheet.map((r) => r.studentId))
+                const updatedSheet = [...existingSheet]
+
+                for (const sid of enrolledIds) {
+                  if (!existingSet.has(sid)) {
+                    const st = currentStudents.find((s) => s.id === sid) || initialStudents.find((s) => s.id === sid)
+                    updatedSheet.push({
+                      studentId: sid,
+                      studentName: st?.name || 'Student',
+                      studentNo: st?.student_no || st?.studentNo || 'N/A',
+                      prelim: { exam: 80, quiz: 80, activities: 80, computedTermGrade: 80 },
+                      midterm: { exam: 82, quiz: 82, activities: 82, computedTermGrade: 82 },
+                      final: { exam: 85, quiz: 85, activities: 85, computedTermGrade: 85 },
+                      average: 82.3,
+                      status: 'On Track',
+                    })
+                  }
+                }
+                if (updatedSheet.length > 0) {
+                  nextSheets[cls.id] = updatedSheet
+                }
+              }
+              return nextSheets
+            })
+
+            return allClasses
           })
         }
       } catch (error) {
@@ -285,10 +374,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }
 
   // Computed values
-  const instructors = useMemo(
-    () => users.filter((user) => user.role === 'instructor' && user.status === 'active'),
-    [users],
-  )
+  const instructors = useMemo(() => {
+    const list: (User & { profile_id?: string })[] = []
+    const seenIds = new Set<string>()
+
+    dbInstructorsList.forEach((inst: any) => {
+      const name = `${inst.profiles?.first_name || ''} ${inst.profiles?.last_name || ''}`.trim() || 'Instructor'
+      const email = inst.profiles?.email || ''
+      list.push({
+        id: inst.id,
+        profile_id: inst.profile_id,
+        name,
+        email,
+        role: 'instructor',
+        status: inst.profiles?.status || 'active',
+      })
+      seenIds.add(inst.id)
+      if (inst.profile_id) seenIds.add(inst.profile_id)
+    })
+
+    users
+      .filter((u) => u.role === 'instructor' && u.status === 'active')
+      .forEach((u) => {
+        if (!seenIds.has(u.id)) {
+          list.push(u)
+          seenIds.add(u.id)
+        }
+      })
+
+    return list
+  }, [users, dbInstructorsList])
 
   const selectedClass = useMemo(
     () => classes.find((classItem) => classItem.id === selectedClassId) ?? classes[0],
@@ -314,14 +429,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const allComputedRows = useMemo(
     () =>
-      classes.flatMap((classItem) =>
-        (grades[classItem.id] ?? []).map((row) => ({
-          classItem,
-          row,
-          student: students.find((student) => student.id === row.studentId),
-          computed: computeGrade(row),
-        })),
-      ),
+      classes.flatMap((classItem) => {
+        const classGrades = grades[classItem.id] ?? []
+        const studentIds = classItem.studentIds || []
+        const allStudentIds = Array.from(new Set([...classGrades.map((g) => g.studentId), ...studentIds]))
+
+        return allStudentIds.map((studentId) => {
+          const row = classGrades.find((g) => g.studentId === studentId) ?? {
+            studentId,
+            quizzes: 80,
+            assignments: 82,
+            activities: 80,
+            midtermExam: 82,
+            finalExam: 85,
+            historical: 80,
+          }
+          const student = students.find((s) => s.id === studentId)
+          return {
+            classItem,
+            row,
+            student,
+            computed: computeGrade(row),
+          }
+        })
+      }),
     [classes, grades, students],
   )
 
@@ -453,31 +584,63 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await dbStudents.update(editingStudentId, updateData)
         } catch {}
       } else {
-        const newStudId = `stud-${crypto.randomUUID().slice(0, 8)}`
-        const newUserId = `user-${crypto.randomUUID().slice(0, 8)}`
+        const nameParts = (studentForm.name || '').trim().split(' ')
+        const firstName = nameParts[0] || 'Student'
+        const lastName = nameParts.slice(1).join(' ') || ''
+        const generatedEmail =
+          (studentForm.email || '').trim().toLowerCase() ||
+          `${studentNo.toLowerCase().replace(/[^a-z0-9]/g, '')}@trackademic.edu`
+        const passwordPlain = studentForm.password || 'password123'
+
+        let createdStudentId: string = crypto.randomUUID()
+        let createdProfileId: string = crypto.randomUUID()
+
+        try {
+          const profile = await dbProfiles.create({
+            email: generatedEmail,
+            password_plain: passwordPlain,
+            first_name: firstName,
+            last_name: lastName,
+            role: 'student',
+            status: 'active',
+          })
+          createdProfileId = profile.id
+
+          const dbStud = await dbStudents.create({
+            profile_id: profile.id,
+            student_no: studentNo,
+            course: studentForm.course || 'BSIT',
+            section_label: studentForm.section_label || 'BSIT-4A',
+            year_level: studentForm.year_level || 4,
+          })
+          createdStudentId = dbStud.id
+        } catch (dbErr) {
+          console.warn('DB student create warning, using fallback ID:', dbErr)
+        }
+
         const newStudent: Student = {
-          id: newStudId,
-          profile_id: newUserId,
+          id: createdStudentId,
+          profile_id: createdProfileId,
           student_no: studentNo,
           studentNo: studentNo,
-          name: studentForm.name,
-          email: studentForm.email,
+          name: studentForm.name.trim(),
+          email: generatedEmail,
           course: studentForm.course || 'BSIT',
           section_label: studentForm.section_label || 'BSIT-4A',
           year_level: studentForm.year_level || 4,
           created_at: new Date().toISOString(),
-          password: studentForm.password || 'password123',
+          password: passwordPlain,
         }
 
         setStudents((current) => [newStudent, ...current])
         setUsers((current) => [
           {
-            id: newUserId,
-            name: studentForm.name || '',
-            email: studentForm.email || `${studentNo.toLowerCase()}@example.com`,
+            id: createdProfileId,
+            name: studentForm.name!.trim(),
+            email: generatedEmail,
             role: 'student',
             status: 'active',
-            password: studentForm.password || 'password123',
+            password: passwordPlain,
           },
           ...current,
         ])
@@ -489,24 +652,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role: 'administrator',
           category: 'user',
         })
-
-        try {
-          const nameParts = (studentForm.name || '').split(' ')
-          const profile = await dbProfiles.create({
-            email: studentForm.email || '',
-            password_plain: studentForm.password || '',
-            first_name: nameParts[0] || '',
-            last_name: nameParts.slice(1).join(' ') || '',
-            role: 'student',
-            status: 'active',
-          })
-          await dbStudents.create({
-            profile_id: profile.id,
-            student_no: studentNo,
-            course: studentForm.course,
-            section_label: studentForm.section_label,
-          })
-        } catch {}
       }
 
       setStudentForm(blankStudent)
@@ -546,6 +691,81 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  // Enroll a student into multiple classes
+  async function enrollStudentInClasses(studentId: string, classIds: string[]) {
+    try {
+      const studentObj = students.find((s) => s.id === studentId)
+      const studentName = studentObj?.name || 'Student'
+
+      // Update classes locally
+      setClasses((current) =>
+        current.map((c) =>
+          classIds.includes(c.id)
+            ? { ...c, studentIds: Array.from(new Set([...(c.studentIds || []), studentId])) }
+            : c,
+        ),
+      )
+
+      // Initialize grade rows for each class if not present
+      setGrades((current) => {
+        const next = { ...current }
+        classIds.forEach((classId) => {
+          const rows = next[classId] ?? []
+          if (!rows.some((r) => r.studentId === studentId)) {
+            rows.push({
+              studentId,
+              student_name: studentName,
+              quizzes: 80,
+              assignments: 82,
+              activities: 80,
+              midtermExam: 82,
+              finalExam: 85,
+              historical: 80,
+            })
+            next[classId] = rows
+          }
+        })
+        return next
+      })
+
+      // Initialize detailed grading sheets similarly
+      setDetailedGradingSheets((current) => {
+        const next = { ...current }
+        classIds.forEach((classId) => {
+          const sheet = next[classId] ?? []
+          if (!sheet.some((s) => s.studentId === studentId)) {
+            sheet.push({
+              studentId,
+              studentName: studentName,
+              studentNo: studentObj?.student_no || studentObj?.studentNo || 'N/A',
+              prelim: { exam: 80, quiz: 80, activities: 80, computedTermGrade: 80 },
+              midterm: { exam: 82, quiz: 82, activities: 82, computedTermGrade: 82 },
+              final: { exam: 85, quiz: 85, activities: 85, computedTermGrade: 85 },
+              average: 82.3,
+              status: 'On Track',
+            })
+            next[classId] = sheet
+          }
+        })
+        return next
+      })
+
+      // Persist to Supabase class_students
+      await Promise.allSettled(
+        classIds.map((classId) => dbClasses.addStudent(classId, studentId)),
+      )
+
+      addActivityLog('Administrator', `Enrolled student ${studentName} into ${classIds.length} class(es)`, 'Student Management')
+      addNotification({
+        title: 'Student enrollment updated',
+        message: `${studentName} was successfully enrolled into ${classIds.length} class(es).`,
+        role: 'administrator',
+        category: 'user',
+      })
+    } catch (error) {
+      console.error('Failed to enroll student in classes:', error)
+    }
+  }
   async function handleSaveSubject(event: React.FormEvent) {
     event.preventDefault()
     if (!subjectForm.code || !subjectForm.title) return
@@ -576,6 +796,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setEditingSubjectId(null)
     } catch (error) {
       console.error('Failed to save subject:', error)
+    }
+  }
+
+  async function deleteSubject(subjectId: string) {
+    try {
+      const subj = subjects.find((s) => s.id === subjectId)
+      setSubjects((current) => current.filter((s) => s.id !== subjectId))
+      if (subj) {
+        addActivityLog('Administrator', `Removed curriculum subject: ${subj.code} - ${subj.title}`, 'Subjects & Classes')
+      }
+      try {
+        await dbSubjects.delete(subjectId)
+      } catch {}
+    } catch (error) {
+      console.error('Failed to delete subject:', error)
     }
   }
 
@@ -655,10 +890,62 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   async function updateClass(classId: string, classData: Partial<ClassRecord>) {
     try {
       setClasses((current) => current.map((c) => (c.id === classId ? { ...c, ...classData } : c)))
+
+      if (Array.isArray(classData.studentIds)) {
+        const newStudentIds = classData.studentIds
+        setGrades((current) => {
+          const classGrades = current[classId] ?? []
+          const existingIds = new Set(classGrades.map((g) => g.studentId))
+          const updatedGrades = classGrades.filter((g) => newStudentIds.includes(g.studentId))
+
+          for (const sid of newStudentIds) {
+            if (!existingIds.has(sid)) {
+              const st = students.find((s) => s.id === sid)
+              updatedGrades.push({
+                studentId: sid,
+                student_name: st?.name || 'Student',
+                quizzes: 80,
+                assignments: 82,
+                activities: 80,
+                midtermExam: 82,
+                finalExam: 85,
+                historical: 80,
+              })
+            }
+          }
+          return { ...current, [classId]: updatedGrades }
+        })
+
+        setDetailedGradingSheets((current) => {
+          const classSheet = current[classId] ?? []
+          const existingIds = new Set(classSheet.map((s) => s.studentId))
+          const updatedSheet = classSheet.filter((s) => newStudentIds.includes(s.studentId))
+
+          for (const sid of newStudentIds) {
+            if (!existingIds.has(sid)) {
+              const st = students.find((s) => s.id === sid)
+              updatedSheet.push({
+                studentId: sid,
+                studentName: st?.name || 'Student',
+                studentNo: st?.student_no || st?.studentNo || 'N/A',
+                prelim: { exam: 80, quiz: 80, activities: 80, computedTermGrade: 80 },
+                midterm: { exam: 82, quiz: 82, activities: 82, computedTermGrade: 82 },
+                final: { exam: 85, quiz: 85, activities: 85, computedTermGrade: 85 },
+                average: 82.3,
+                status: 'On Track',
+              })
+            }
+          }
+          return { ...current, [classId]: updatedSheet }
+        })
+      }
+
       addActivityLog('Administrator', `Updated class record and assignments`, 'Subjects & Classes')
       try {
         await dbClasses.update(classId, classData)
-      } catch {}
+      } catch (err) {
+        console.warn('DB class update fallback:', err)
+      }
     } catch (error) {
       console.error('Failed to update class:', error)
     }
@@ -904,6 +1191,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     handleSaveStudent,
     deleteStudent,
     handleSaveSubject,
+    deleteSubject,
     createClass,
     updateClass,
     deleteClass,
@@ -914,6 +1202,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     reportText,
     printReport,
     markNotificationRead,
+    enrollStudentInClasses,
     addNotification,
     addActivityLog,
     updateSettings,
