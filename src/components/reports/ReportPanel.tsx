@@ -52,7 +52,7 @@ const reportTypesMeta: { type: ReportType; icon: React.ComponentType<any>; descr
 
 export const ReportPanel: React.FC = () => {
   const { activeUser } = useAuth()
-  const { reports, generateReport, printReport, reportText } = useReports()
+  const { reports, generateReport, printReport, printStudentGradingBookReport, reportText } = useReports()
   const [selectedType, setSelectedType] = useState<ReportType | null>(null)
   const [formatNotice, setFormatNotice] = useState<string | null>(null)
 
@@ -72,7 +72,11 @@ export const ReportPanel: React.FC = () => {
       return
     }
     generateReport(selectedType, activeUser?.name ?? 'System')
-    printReport()
+    if (selectedType === 'Student Grade Report') {
+      printStudentGradingBookReport()
+    } else {
+      printReport()
+    }
   }
 
   function handleExportCSV() {

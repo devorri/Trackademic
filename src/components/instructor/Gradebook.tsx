@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../hooks/useAuth'
 import { getSubjectTitle, clampScore } from '../../utils/helpers'
-import { Save, Printer, Search, Layers, FileSpreadsheet, Check, Info } from 'lucide-react'
+import { Save, Printer, Search, Layers, FileSpreadsheet, Check, Info, FlaskConical, BookOpen } from 'lucide-react'
 
 export const Gradebook: React.FC = () => {
   const { activeUser } = useAuth()
@@ -12,12 +12,14 @@ export const Gradebook: React.FC = () => {
     selectedClass,
     setSelectedClassId,
     instructors,
+    students,
     gradebook,
     selectedClassAverages,
     detailedGradingSheets,
     updateDetailedGrade,
     generateReport,
     printReport,
+    printStudentGradingBookReport,
   } = useData()
 
   const [viewMode, setViewMode] = useState<'detailed' | 'summary'>('detailed')
@@ -40,41 +42,32 @@ export const Gradebook: React.FC = () => {
     )
   }
 
-  const instructorName = instructors.find((i) => i.id === selectedClass.instructor_id)?.name || 'Mr. Reyes'
+  const instructorName = instructors.find((i) => i.id === selectedClass.instructor_id)?.name || 'Prof. Ochavilla'
+  const currentSubject = subjects.find((s) => s.id === selectedClass.subject_id)
   const subjectTitle = getSubjectTitle(subjects, selectedClass.subject_id)
+  const hasLaboratory = currentSubject?.has_laboratory ?? (selectedClass.subject?.has_laboratory ?? false)
 
-  const currentDetailedSheet = detailedGradingSheets[selectedClass.id] || [
-    {
-      studentId: 'stud-3',
-      studentName: 'Juan',
-      studentNo: '2026-003',
-      prelim: { exam: 80, quiz: 80, activities: 80, computedTermGrade: 80 },
-      midterm: { exam: 82, quiz: 82, activities: 82, computedTermGrade: 82 },
-      final: { exam: 85, quiz: 85, activities: 85, computedTermGrade: 85 },
-      average: 82.3,
-      status: 'On Track' as any,
-    },
-    {
-      studentId: 'stud-4',
-      studentName: 'Maria',
-      studentNo: '2026-004',
-      prelim: { exam: 75, quiz: 75, activities: 75, computedTermGrade: 75 },
-      midterm: { exam: 78, quiz: 78, activities: 78, computedTermGrade: 78 },
-      final: { exam: 80, quiz: 80, activities: 80, computedTermGrade: 80 },
-      average: 77.7,
-      status: 'On Track' as any,
-    },
-    {
-      studentId: 'stud-1',
-      studentName: 'Liam',
-      studentNo: '2026-001',
-      prelim: { exam: 84, quiz: 86, activities: 85, computedTermGrade: 85 },
-      midterm: { exam: 86, quiz: 87, activities: 86, computedTermGrade: 86.3 },
-      final: { exam: 87, quiz: 88, activities: 87, computedTermGrade: 87.2 },
-      average: 86.2,
-      status: 'On Track' as any,
-    },
-  ]
+  const currentDetailedSheet = detailedGradingSheets[selectedClass.id] || (
+    selectedClass.studentIds?.map((stId) => {
+      const st = students.find((s) => s.id === stId)
+      return {
+        studentId: stId,
+        studentName: st?.name || 'Student',
+        studentNo: st?.student_no || '2026-001',
+        prelimExam: 82,
+        quiz: 84,
+        activity: 85,
+        attendance: 90,
+        participation: 88,
+        labExam: hasLaboratory ? 86 : null,
+        midterm: 83,
+        final: 85,
+        average: 85.4,
+        status: 'On Track' as any,
+        prelim: { exam: 82, quiz: 84, activities: 85, attendance: 90, participation: 88, labExam: hasLaboratory ? 86 : null, computedTermGrade: 85 },
+      }
+    }) || []
+  )
 
   const filteredDetailedSheet = currentDetailedSheet.filter((row) =>
     (row.studentName || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
@@ -106,7 +99,7 @@ export const Gradebook: React.FC = () => {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
               <span
                 style={{
                   background: '#eff6ff',
@@ -115,11 +108,11 @@ export const Gradebook: React.FC = () => {
                   padding: '0.2rem 0.65rem',
                   borderRadius: '999px',
                   fontSize: '0.75rem',
-                  fontWeight: 700,
+                  fontWeight: 800,
                   textTransform: 'uppercase',
                 }}
               >
-                Official Gradebook & Grading Sheet
+                Official Grading Book
               </span>
               <span
                 style={{
@@ -132,18 +125,56 @@ export const Gradebook: React.FC = () => {
                   fontWeight: 700,
                 }}
               >
-                Section: {selectedClass.section?.name || 'BSIT'}
+                Section: {selectedClass.section?.name || 'BSIT-2A'}
               </span>
+
+              {/* Laboratory vs Non-Laboratory Indicator */}
+              {hasLaboratory ? (
+                <span
+                  style={{
+                    background: '#e0e7ff',
+                    color: '#3730a3',
+                    border: '1px solid #c7d2fe',
+                    padding: '0.2rem 0.65rem',
+                    borderRadius: '999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 800,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                  }}
+                >
+                  <FlaskConical size={12} /> With Laboratory Exam
+                </span>
+              ) : (
+                <span
+                  style={{
+                    background: '#f8fafc',
+                    color: '#475569',
+                    border: '1px solid #cbd5e1',
+                    padding: '0.2rem 0.65rem',
+                    borderRadius: '999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                  }}
+                >
+                  <BookOpen size={12} /> Lecture-Only Subject (No Lab)
+                </span>
+              )}
             </div>
+
             <h3 style={{ margin: '0.6rem 0 0.25rem 0', fontSize: '1.6rem', color: '#0f172a', fontWeight: 800 }}>
-              {subjectTitle}
+              {currentSubject?.code ? `${currentSubject.code} — ` : ''}{subjectTitle}
             </h3>
             <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem' }}>
-              Instructor: <strong style={{ color: '#0f172a' }}>{instructorName}</strong> • Room: {selectedClass.room || 'Room 201'} • Schedule: {selectedClass.schedule}
+              Instructor / Trainer: <strong style={{ color: '#0f172a' }}>{instructorName}</strong> • Room: {selectedClass.room || 'Computer Lab 1'} • Schedule: {selectedClass.schedule}
             </p>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '0.7rem', alignItems: 'center', flexWrap: 'wrap' }}>
             {/* Class Selector Dropdown */}
             <select
               value={selectedClass.id}
@@ -159,11 +190,14 @@ export const Gradebook: React.FC = () => {
                 cursor: 'pointer',
               }}
             >
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {getSubjectTitle(subjects, c.subject_id)} ({c.section?.name || 'Section'})
-                </option>
-              ))}
+              {classes.map((c) => {
+                const s = subjects.find((subj) => subj.id === c.subject_id)
+                return (
+                  <option key={c.id} value={c.id}>
+                    {s?.code || 'SUBJ'} - {getSubjectTitle(subjects, c.subject_id)} ({c.section?.name || 'Section'})
+                  </option>
+                )
+              })}
             </select>
 
             <button
@@ -174,7 +208,7 @@ export const Gradebook: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.4rem',
-                padding: '0.65rem 1.2rem',
+                padding: '0.65rem 1.1rem',
                 fontWeight: 700,
                 borderRadius: '10px',
               }}
@@ -182,6 +216,7 @@ export const Gradebook: React.FC = () => {
               <Save size={16} /> Save Grades
             </button>
 
+            {/* Print Class Grade Record PDF */}
             <button
               type="button"
               onClick={printReport}
@@ -189,16 +224,37 @@ export const Gradebook: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 gap: '0.4rem',
-                padding: '0.65rem 1.2rem',
-                background: '#f8fafc',
-                color: '#0f172a',
-                border: '1.5px solid #cbd5e1',
+                padding: '0.65rem 1.1rem',
+                background: '#ffffff',
+                color: '#1e3a8a',
+                border: '1.5px solid #bfdbfe',
                 borderRadius: '10px',
                 cursor: 'pointer',
                 fontWeight: 700,
               }}
             >
-              <Printer size={16} color="#475569" /> Print Report
+              <Printer size={16} color="#2563eb" /> Print Class Record (PDF)
+            </button>
+
+            {/* Print Student Grade Book (Template PDF) */}
+            <button
+              type="button"
+              onClick={() => printStudentGradingBookReport()}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                padding: '0.65rem 1.1rem',
+                background: '#f8fafc',
+                color: '#047857',
+                border: '1.5px solid #a7f3d0',
+                borderRadius: '10px',
+                cursor: 'pointer',
+                fontWeight: 700,
+              }}
+              title="Prints 8-Subject Student Grading Book matching Grading_Book_Template (1).xlsx"
+            >
+              <FileSpreadsheet size={16} color="#059669" /> Print Student Grade Book (Template PDF)
             </button>
           </div>
         </div>
@@ -226,7 +282,7 @@ export const Gradebook: React.FC = () => {
 
       {/* Mode Switch & Search */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-        {/* Toggle between Detailed Grading Sheet & Summary View */}
+        {/* Toggle between Detailed Assessment Sheet & Summary View */}
         <div
           style={{
             display: 'flex',
@@ -255,7 +311,7 @@ export const Gradebook: React.FC = () => {
               transition: 'all 0.2s ease',
             }}
           >
-            <FileSpreadsheet size={16} /> Detailed Grading Sheet (Scores Breakdown)
+            <FileSpreadsheet size={16} /> Official Assessment Sheet (Aligned with Excel Template)
           </button>
           <button
             type="button"
@@ -283,7 +339,7 @@ export const Gradebook: React.FC = () => {
         {/* Student Search */}
         <div style={{ position: 'relative', width: '280px' }}>
           <input
-            placeholder="Search student in class..."
+            placeholder="Search student name..."
             value={studentSearch}
             onChange={(e) => setStudentSearch(e.target.value)}
             style={{
@@ -303,7 +359,7 @@ export const Gradebook: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. DETAILED GRADING SHEET (Exam, Quiz, Activity Breakdown per Term) */}
+      {/* 1. OFFICIAL ASSESSMENT SHEET: Aligned 100% with Grading_Book_Template (1).xlsx */}
       {viewMode === 'detailed' && (
         <section
           style={{
@@ -317,10 +373,10 @@ export const Gradebook: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '0.8rem' }}>
             <div>
               <h4 style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a', fontWeight: 800 }}>
-                Itemized Scoring Breakdown: Exam, Quiz & Activities
+                Assessment Scoring Breakdown: Prelim Exam, Quiz, Activity, Attendance, Participation, Laboratory & Major Exams
               </h4>
               <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.88rem', color: '#475569' }}>
-                Detailed scores are recorded per period (Prelim, Midterm, Final) with instant automatic weighted calculation.
+                Aligned with official template columns. Laboratory Exam is active for lab subjects and marked as N/A for lecture-only subjects.
               </p>
             </div>
             <div
@@ -337,7 +393,7 @@ export const Gradebook: React.FC = () => {
                 fontWeight: 600,
               }}
             >
-              <Info size={15} /> Instant automatic calculation for transparent record keeping
+              <Info size={15} /> Auto-calculated subject average mirroring official Excel formula
             </div>
           </div>
 
@@ -345,47 +401,49 @@ export const Gradebook: React.FC = () => {
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, margin: 0, width: '100%' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  <th style={{ borderBottom: '2px solid #cbd5e1', minWidth: '150px', color: '#0f172a', fontWeight: 700 }}>Student</th>
-                  {/* Prelim column group */}
-                  <th style={{ borderBottom: '2px solid #2563eb', color: '#1d4ed8', textAlign: 'center', fontWeight: 700 }}>Prelim Quiz</th>
-                  <th style={{ borderBottom: '2px solid #2563eb', color: '#1d4ed8', textAlign: 'center', fontWeight: 700 }}>Prelim Act</th>
+                  <th style={{ borderBottom: '2px solid #cbd5e1', minWidth: '180px', color: '#0f172a', fontWeight: 800 }}>Student Name</th>
                   <th style={{ borderBottom: '2px solid #2563eb', color: '#1d4ed8', textAlign: 'center', fontWeight: 700 }}>Prelim Exam</th>
-                  <th style={{ borderBottom: '2px solid #2563eb', color: '#1e40af', textAlign: 'center', background: '#eff6ff', fontWeight: 800 }}>Prelim Gr.</th>
-                  {/* Midterm column group */}
-                  <th style={{ borderBottom: '2px solid #059669', color: '#047857', textAlign: 'center', fontWeight: 700 }}>Midterm Quiz</th>
-                  <th style={{ borderBottom: '2px solid #059669', color: '#047857', textAlign: 'center', fontWeight: 700 }}>Midterm Act</th>
-                  <th style={{ borderBottom: '2px solid #059669', color: '#047857', textAlign: 'center', fontWeight: 700 }}>Midterm Exam</th>
-                  <th style={{ borderBottom: '2px solid #059669', color: '#065f46', textAlign: 'center', background: '#f0fdf4', fontWeight: 800 }}>Midterm Gr.</th>
-                  {/* Final column group */}
-                  <th style={{ borderBottom: '2px solid #7c3aed', color: '#6d28d9', textAlign: 'center', fontWeight: 700 }}>Final Quiz</th>
-                  <th style={{ borderBottom: '2px solid #7c3aed', color: '#6d28d9', textAlign: 'center', fontWeight: 700 }}>Final Act</th>
-                  <th style={{ borderBottom: '2px solid #7c3aed', color: '#6d28d9', textAlign: 'center', fontWeight: 700 }}>Final Exam</th>
-                  <th style={{ borderBottom: '2px solid #7c3aed', color: '#5b21b6', textAlign: 'center', background: '#faf5ff', fontWeight: 800 }}>Final Gr.</th>
-                  {/* Overall Average */}
-                  <th style={{ borderBottom: '2px solid #d97706', color: '#b45309', textAlign: 'center', background: '#fef3c7', fontWeight: 800 }}>Average</th>
+                  <th style={{ borderBottom: '2px solid #2563eb', color: '#1d4ed8', textAlign: 'center', fontWeight: 700 }}>Quiz</th>
+                  <th style={{ borderBottom: '2px solid #2563eb', color: '#1d4ed8', textAlign: 'center', fontWeight: 700 }}>Activity</th>
+                  <th style={{ borderBottom: '2px solid #059669', color: '#047857', textAlign: 'center', fontWeight: 700 }}>Attendance</th>
+                  <th style={{ borderBottom: '2px solid #059669', color: '#047857', textAlign: 'center', fontWeight: 700 }}>Participation</th>
+                  <th style={{ borderBottom: '2px solid #7c3aed', color: '#6d28d9', textAlign: 'center', fontWeight: 700, background: hasLaboratory ? '#faf5ff' : '#f8fafc' }}>
+                    Laboratory Exam {hasLaboratory ? '🧪' : ''}
+                  </th>
+                  <th style={{ borderBottom: '2px solid #059669', color: '#047857', textAlign: 'center', fontWeight: 700 }}>Midterm</th>
+                  <th style={{ borderBottom: '2px solid #7c3aed', color: '#6d28d9', textAlign: 'center', fontWeight: 700 }}>Final</th>
+                  <th style={{ borderBottom: '2px solid #d97706', color: '#b45309', textAlign: 'center', background: '#fef3c7', fontWeight: 800 }}>Subject Average</th>
+                  <th style={{ borderBottom: '2px solid #cbd5e1', color: '#334155', textAlign: 'center', fontWeight: 700 }}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredDetailedSheet.map((item) => {
                   const studentName = item.studentName || 'Student'
-                  const studentNo = item.studentNo || '2026-001'
+                  const prelimScore = item.prelimExam ?? item.prelim?.exam ?? 0
+                  const quizScore = item.quiz ?? item.prelim?.quiz ?? 0
+                  const activityScore = item.activity ?? item.prelim?.activities ?? 0
+                  const attendanceScore = item.attendance ?? 85
+                  const participationScore = item.participation ?? 85
+                  const midtermScore = typeof item.midterm === 'number' ? item.midterm : (item.midterm?.computedTermGrade || prelimScore)
+                  const finalScore = typeof item.final === 'number' ? item.final : (item.final?.computedTermGrade || prelimScore)
 
                   return (
                     <tr key={item.studentId} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '0.8rem 1rem' }}>
-                        <strong style={{ color: '#0f172a', display: 'block' }}>{studentName}</strong>
-                        <small style={{ color: '#64748b' }}>{studentNo}</small>
+                      {/* Student Name (No raw ID number needed) */}
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <strong style={{ color: '#0f172a', display: 'block', fontSize: '0.98rem' }}>{studentName}</strong>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>Enrolled Student</span>
                       </td>
 
-                      {/* Prelim Scores */}
+                      {/* 1. Prelim Exam */}
                       <td style={{ textAlign: 'center', padding: '0.5rem' }}>
                         <input
                           type="number"
                           min="0"
                           max="100"
-                          value={item.prelim.quiz}
+                          value={prelimScore}
                           onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'prelim', 'quiz', clampScore(e.target.value))
+                            updateDetailedGrade(selectedClass.id, item.studentId, 'prelimExam', clampScore(e.target.value))
                           }
                           style={{
                             width: '56px',
@@ -398,62 +456,17 @@ export const Gradebook: React.FC = () => {
                             fontWeight: 700,
                           }}
                         />
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.prelim.activities}
-                          onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'prelim', 'activities', clampScore(e.target.value))
-                          }
-                          style={{
-                            width: '56px',
-                            textAlign: 'center',
-                            padding: '0.4rem 0.2rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: 700,
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.prelim.exam}
-                          onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'prelim', 'exam', clampScore(e.target.value))
-                          }
-                          style={{
-                            width: '56px',
-                            textAlign: 'center',
-                            padding: '0.4rem 0.2rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: 700,
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 800, color: '#1d4ed8', background: '#eff6ff', fontSize: '0.95rem' }}>
-                        {item.prelim.computedTermGrade}
                       </td>
 
-                      {/* Midterm Scores */}
+                      {/* 2. Quiz */}
                       <td style={{ textAlign: 'center', padding: '0.5rem' }}>
                         <input
                           type="number"
                           min="0"
                           max="100"
-                          value={item.midterm.quiz}
+                          value={quizScore}
                           onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'midterm', 'quiz', clampScore(e.target.value))
+                            updateDetailedGrade(selectedClass.id, item.studentId, 'quiz', clampScore(e.target.value))
                           }
                           style={{
                             width: '56px',
@@ -466,62 +479,17 @@ export const Gradebook: React.FC = () => {
                             fontWeight: 700,
                           }}
                         />
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.midterm.activities}
-                          onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'midterm', 'activities', clampScore(e.target.value))
-                          }
-                          style={{
-                            width: '56px',
-                            textAlign: 'center',
-                            padding: '0.4rem 0.2rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: 700,
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.midterm.exam}
-                          onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'midterm', 'exam', clampScore(e.target.value))
-                          }
-                          style={{
-                            width: '56px',
-                            textAlign: 'center',
-                            padding: '0.4rem 0.2rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: 700,
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 800, color: '#047857', background: '#f0fdf4', fontSize: '0.95rem' }}>
-                        {item.midterm.computedTermGrade}
                       </td>
 
-                      {/* Final Scores */}
+                      {/* 3. Activity */}
                       <td style={{ textAlign: 'center', padding: '0.5rem' }}>
                         <input
                           type="number"
                           min="0"
                           max="100"
-                          value={item.final.quiz}
+                          value={activityScore}
                           onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'final', 'quiz', clampScore(e.target.value))
+                            updateDetailedGrade(selectedClass.id, item.studentId, 'activity', clampScore(e.target.value))
                           }
                           style={{
                             width: '56px',
@@ -534,56 +502,160 @@ export const Gradebook: React.FC = () => {
                             fontWeight: 700,
                           }}
                         />
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.final.activities}
-                          onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'final', 'activities', clampScore(e.target.value))
-                          }
-                          style={{
-                            width: '56px',
-                            textAlign: 'center',
-                            padding: '0.4rem 0.2rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: 700,
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.final.exam}
-                          onChange={(e) =>
-                            updateDetailedGrade(selectedClass.id, item.studentId, 'final', 'exam', clampScore(e.target.value))
-                          }
-                          style={{
-                            width: '56px',
-                            textAlign: 'center',
-                            padding: '0.4rem 0.2rem',
-                            borderRadius: '8px',
-                            border: '1.5px solid #cbd5e1',
-                            background: '#ffffff',
-                            color: '#0f172a',
-                            fontWeight: 700,
-                          }}
-                        />
-                      </td>
-                      <td style={{ textAlign: 'center', fontWeight: 800, color: '#6d28d9', background: '#faf5ff', fontSize: '0.95rem' }}>
-                        {item.final.computedTermGrade}
                       </td>
 
-                      {/* Final Average (e.g. Juan: 82.3, Maria: 77.7) */}
-                      <td style={{ textAlign: 'center', fontWeight: 900, fontSize: '1.05rem', color: '#b45309', background: '#fef3c7' }}>
-                        {item.average}
+                      {/* 4. Attendance */}
+                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={attendanceScore}
+                          onChange={(e) =>
+                            updateDetailedGrade(selectedClass.id, item.studentId, 'attendance', clampScore(e.target.value))
+                          }
+                          style={{
+                            width: '56px',
+                            textAlign: 'center',
+                            padding: '0.4rem 0.2rem',
+                            borderRadius: '8px',
+                            border: '1.5px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#0f172a',
+                            fontWeight: 700,
+                          }}
+                        />
+                      </td>
+
+                      {/* 5. Participation */}
+                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={participationScore}
+                          onChange={(e) =>
+                            updateDetailedGrade(selectedClass.id, item.studentId, 'participation', clampScore(e.target.value))
+                          }
+                          style={{
+                            width: '56px',
+                            textAlign: 'center',
+                            padding: '0.4rem 0.2rem',
+                            borderRadius: '8px',
+                            border: '1.5px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#0f172a',
+                            fontWeight: 700,
+                          }}
+                        />
+                      </td>
+
+                      {/* 6. Laboratory Exam (Active if hasLaboratory, N/A if lecture-only) */}
+                      <td style={{ textAlign: 'center', padding: '0.5rem', background: hasLaboratory ? '#faf5ff' : 'transparent' }}>
+                        {hasLaboratory ? (
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={item.labExam ?? 85}
+                            onChange={(e) =>
+                              updateDetailedGrade(selectedClass.id, item.studentId, 'labExam', clampScore(e.target.value))
+                            }
+                            style={{
+                              width: '56px',
+                              textAlign: 'center',
+                              padding: '0.4rem 0.2rem',
+                              borderRadius: '8px',
+                              border: '1.5px solid #a855f7',
+                              background: '#ffffff',
+                              color: '#6b21a8',
+                              fontWeight: 800,
+                            }}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '0.25rem 0.65rem',
+                              background: '#e2e8f0',
+                              color: '#64748b',
+                              borderRadius: '6px',
+                              fontSize: '0.8rem',
+                              fontWeight: 800,
+                              letterSpacing: '0.04em',
+                            }}
+                          >
+                            N/A
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 7. Midterm */}
+                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={midtermScore}
+                          onChange={(e) =>
+                            updateDetailedGrade(selectedClass.id, item.studentId, 'midterm', clampScore(e.target.value))
+                          }
+                          style={{
+                            width: '56px',
+                            textAlign: 'center',
+                            padding: '0.4rem 0.2rem',
+                            borderRadius: '8px',
+                            border: '1.5px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#0f172a',
+                            fontWeight: 700,
+                          }}
+                        />
+                      </td>
+
+                      {/* 8. Final */}
+                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={finalScore}
+                          onChange={(e) =>
+                            updateDetailedGrade(selectedClass.id, item.studentId, 'final', clampScore(e.target.value))
+                          }
+                          style={{
+                            width: '56px',
+                            textAlign: 'center',
+                            padding: '0.4rem 0.2rem',
+                            borderRadius: '8px',
+                            border: '1.5px solid #cbd5e1',
+                            background: '#ffffff',
+                            color: '#0f172a',
+                            fontWeight: 700,
+                          }}
+                        />
+                      </td>
+
+                      {/* Subject Average (Green highlight matching template) */}
+                      <td style={{ textAlign: 'center', fontWeight: 900, fontSize: '1.05rem', color: '#065f46', background: '#ecfdf5' }}>
+                        {item.average ? item.average.toFixed(1) : '0.0'}%
+                      </td>
+
+                      {/* Remarks */}
+                      <td style={{ textAlign: 'center', padding: '0.5rem' }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: item.status === 'Bound to Fail' ? '#fee2e2' : item.status === 'At Risk' ? '#ffedd5' : '#dcfce7',
+                            color: item.status === 'Bound to Fail' ? '#991b1b' : item.status === 'At Risk' ? '#9a3412' : '#166534',
+                          }}
+                        >
+                          {item.status}
+                        </span>
                       </td>
                     </tr>
                   )
@@ -594,7 +666,7 @@ export const Gradebook: React.FC = () => {
         </section>
       )}
 
-      {/* 2. SUMMARY VIEW (Student, Prelim, Midterm, Final, Average) */}
+      {/* 2. SUMMARY VIEW (Student Name, Prelim, Midterm, Final, Average) */}
       {viewMode === 'summary' && (
         <section
           style={{
@@ -613,7 +685,7 @@ export const Gradebook: React.FC = () => {
             <table style={{ margin: 0, width: '100%' }}>
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
-                  <th style={{ color: '#0f172a', fontWeight: 700 }}>Student</th>
+                  <th style={{ color: '#0f172a', fontWeight: 700 }}>Student Name</th>
                   <th style={{ color: '#0f172a', fontWeight: 700 }}>Prelim</th>
                   <th style={{ color: '#0f172a', fontWeight: 700 }}>Midterm</th>
                   <th style={{ color: '#0f172a', fontWeight: 700 }}>Final</th>
@@ -629,7 +701,7 @@ export const Gradebook: React.FC = () => {
                     <tr key={item.row.studentId} style={{ borderBottom: '1px solid #f1f5f9' }}>
                       <td style={{ padding: '0.8rem 1rem' }}>
                         <strong style={{ color: '#0f172a', display: 'block' }}>{item.student?.name || 'Student'}</strong>
-                        <small style={{ color: '#64748b' }}>{item.student?.student_no || item.student?.studentNo}</small>
+                        <small style={{ color: '#64748b' }}>Enrolled Student</small>
                       </td>
                       <td style={{ color: '#334155', fontWeight: 600 }}>{item.computed.preliminary}%</td>
                       <td style={{ color: '#334155', fontWeight: 600 }}>{item.computed.midterm}%</td>
@@ -655,13 +727,12 @@ export const Gradebook: React.FC = () => {
                       <td>
                         <span
                           style={{
-                            padding: '0.25rem 0.65rem',
+                            padding: '0.2rem 0.6rem',
                             borderRadius: '999px',
-                            fontSize: '0.75rem',
+                            fontSize: '0.78rem',
                             fontWeight: 700,
                             background: isRisk ? '#fee2e2' : '#dcfce7',
-                            color: isRisk ? '#b91c1c' : '#15803d',
-                            border: isRisk ? '1px solid #fecaca' : '1px solid #bbf7d0',
+                            color: isRisk ? '#991b1b' : '#166534',
                           }}
                         >
                           {item.computed.status}
@@ -671,27 +742,44 @@ export const Gradebook: React.FC = () => {
                   )
                 })}
               </tbody>
-              <tfoot style={{ background: '#f8fafc', fontWeight: 700, borderTop: '2px solid #e2e8f0' }}>
-                <tr>
-                  <td style={{ color: '#0f172a', padding: '1rem' }}>Class Average</td>
-                  <td colSpan={3} style={{ textAlign: 'right', color: '#475569' }}>Class Mean:</td>
-                  <td>
-                    <strong style={{ fontSize: '1.15rem', color: '#1d4ed8', fontWeight: 900 }}>{selectedClassAverages.overallAvg}%</strong>
-                  </td>
-                  <td style={{ color: '#334155' }}>GPA {selectedClassAverages.gpaAvg}</td>
-                  <td>
-                    <small style={{ color: '#64748b', fontWeight: 600 }}>
-                      {selectedClassAverages.safeCount} Safe • {selectedClassAverages.atRiskCount} At Risk
-                    </small>
-                  </td>
-                </tr>
-              </tfoot>
             </table>
           </div>
         </section>
       )}
+
+      {/* Class Statistics Footer */}
+      <section
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '1rem',
+        }}
+      >
+        <div style={{ background: '#ffffff', padding: '1.2rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Class Batch Average</span>
+          <h3 style={{ margin: '0.4rem 0 0 0', color: '#1e3a8a', fontSize: '1.5rem', fontWeight: 800 }}>
+            {selectedClassAverages.overallAvg}%
+          </h3>
+        </div>
+        <div style={{ background: '#ffffff', padding: '1.2rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>GPA Equivalent</span>
+          <h3 style={{ margin: '0.4rem 0 0 0', color: '#047857', fontSize: '1.5rem', fontWeight: 800 }}>
+            {selectedClassAverages.gpaAvg}
+          </h3>
+        </div>
+        <div style={{ background: '#ffffff', padding: '1.2rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Total Enrolled</span>
+          <h3 style={{ margin: '0.4rem 0 0 0', color: '#0f172a', fontSize: '1.5rem', fontWeight: 800 }}>
+            {filteredDetailedSheet.length} Students
+          </h3>
+        </div>
+        <div style={{ background: '#ffffff', padding: '1.2rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>Passing / Safe Count</span>
+          <h3 style={{ margin: '0.4rem 0 0 0', color: '#16a34a', fontSize: '1.5rem', fontWeight: 800 }}>
+            {selectedClassAverages.safeCount} Students
+          </h3>
+        </div>
+      </section>
     </div>
   )
 }
-
-export default Gradebook

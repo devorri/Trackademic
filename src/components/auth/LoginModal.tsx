@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Eye, EyeOff, X, Shield, User, GraduationCap } from 'lucide-react'
+import { Eye, EyeOff, X } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 
 export const LoginModal: React.FC = () => {
@@ -19,11 +19,6 @@ export const LoginModal: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
 
   if (!isLoginOpen) return null
-
-  function fillDemoAccount(email: string, pass: string = 'password123') {
-    setLoginEmail(email)
-    setLoginPassword(pass)
-  }
 
   return (
     <div className="login-modal-backdrop" onClick={() => setIsLoginOpen(false)}>
@@ -57,81 +52,7 @@ export const LoginModal: React.FC = () => {
             </div>
             <p className="eyebrow">Secure Sign In</p>
             <h2 id="login-modal-title">Welcome Back</h2>
-            <p>Select a portal role or enter your credentials</p>
-          </div>
-
-          {/* Quick Demo Role Selector Pills */}
-          <div style={{ marginBottom: '1.2rem' }}>
-            <span style={{ fontSize: '0.78rem', color: '#64748b', display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-              Quick Demo Logins:
-            </span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('admin@example.com')}
-                style={{
-                  padding: '0.5rem 0.3rem',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: loginEmail === 'admin@example.com' ? 'rgba(59,130,246,0.15)' : '#f8fafc',
-                  color: '#1e293b',
-                  fontSize: '0.76rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.2rem',
-                }}
-              >
-                <Shield size={14} color="#3b82f6" />
-                <span>Admin</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('kissy@gmail.com')}
-                style={{
-                  padding: '0.5rem 0.3rem',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: loginEmail === 'kissy@gmail.com' ? 'rgba(59,130,246,0.15)' : '#f8fafc',
-                  color: '#1e293b',
-                  fontSize: '0.76rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.2rem',
-                }}
-              >
-                <User size={14} color="#10b981" />
-                <span>Instructor</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('student1@example.com')}
-                style={{
-                  padding: '0.5rem 0.3rem',
-                  borderRadius: '8px',
-                  border: '1px solid #cbd5e1',
-                  background: loginEmail === 'student1@example.com' ? 'rgba(59,130,246,0.15)' : '#f8fafc',
-                  color: '#1e293b',
-                  fontSize: '0.76rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.2rem',
-                }}
-              >
-                <GraduationCap size={14} color="#8b5cf6" />
-                <span>Student</span>
-              </button>
-            </div>
+            <p>Enter your institutional email and password to access your portal</p>
           </div>
 
           <label>

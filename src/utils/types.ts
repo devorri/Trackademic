@@ -34,15 +34,18 @@ export type DashboardSection =
 
 export type Profile = {
   id: string;
-  email: string;
-  password_plain: string;
-  first_name: string;
-  last_name: string;
-  role: Role;
-  status: UserStatus;
+  name?: string;
+  email?: string;
+  password_plain?: string;
+  first_name?: string;
+  last_name?: string;
+  role: Role | string;
+  status?: UserStatus;
   avatar_url?: string;
+  face_embedding?: any;
+  camera_status?: string;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 };
 
 export type User = {
@@ -82,6 +85,9 @@ export type Subject = {
   code: string
   title: string
   units: number
+  has_laboratory?: boolean
+  lecture_hours?: number
+  lab_hours?: number
   created_at: string
 }
 
@@ -150,6 +156,9 @@ export type GradeRow = {
   midtermExam: number
   finalExam: number
   historical: number
+  attendance?: number
+  participation?: number
+  labExam?: number
 }
 
 export type Prediction = {
@@ -205,6 +214,9 @@ export type DetailedTermScores = {
   exam: number
   quiz: number
   activities: number
+  attendance?: number
+  participation?: number
+  labExam?: number | null
   computedTermGrade: number
 }
 
@@ -212,11 +224,38 @@ export type DetailedGradingSheet = {
   studentId: string
   studentName?: string
   studentNo?: string
-  prelim: DetailedTermScores
-  midterm: DetailedTermScores
-  final: DetailedTermScores
+  // Assessment fields matching Grading_Book_Template (1).xlsx
+  prelimExam?: number
+  quiz?: number
+  activity?: number
+  attendance?: number
+  participation?: number
+  labExam?: number | null // null indicates N/A
+  midterm?: any
+  final?: any
+  // Term breakdown objects (for backward compatibility)
+  prelim?: any
+  midtermScore?: any
+  finalScore?: any
   average: number
   status: PredictionStatus
+}
+
+export type StudentAssessmentRow = {
+  subjectId: string
+  subjectCode: string
+  subjectTitle: string
+  units: number
+  hasLaboratory: boolean
+  prelimExam: number
+  quiz: number
+  activity: number
+  attendance: number
+  participation: number
+  labExam: number | null // null represents N/A
+  midterm: number
+  final: number
+  subjectAverage: number
 }
 
 export type NotificationItem = {
@@ -249,6 +288,12 @@ export type SystemSettings = {
   assignmentWeight: number
   activityWeight: number
   examWeight: number
+  attendanceWeight: number
+  participationWeight: number
+  labExamWeight: number
+  withLabQuizWeight: number
+  withLabActivityWeight: number
+  withLabExamWeight: number
   automatedRiskAlerts: boolean
   systemPreferences: {
     theme: 'dark' | 'light'

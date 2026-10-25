@@ -15,9 +15,12 @@ export const AdminSettings: React.FC = () => {
   const [midtermWeight, setMidtermWeight] = useState(settings.midtermWeight)
   const [finalWeight, setFinalWeight] = useState(settings.finalWeight)
   const [quizWeight, setQuizWeight] = useState(settings.quizWeight)
-  const [assignmentWeight, setAssignmentWeight] = useState(settings.assignmentWeight)
+  const assignmentWeight = settings.assignmentWeight || 0
   const [activityWeight, setActivityWeight] = useState(settings.activityWeight)
+  const [attendanceWeight, setAttendanceWeight] = useState(settings.attendanceWeight || 10)
+  const [participationWeight, setParticipationWeight] = useState(settings.participationWeight || 10)
   const [examWeight, setExamWeight] = useState(settings.examWeight)
+  const [labExamWeight, setLabExamWeight] = useState(settings.labExamWeight || 25)
   const [automatedRiskAlerts, setAutomatedRiskAlerts] = useState(settings.automatedRiskAlerts)
 
   // Account settings
@@ -46,7 +49,10 @@ export const AdminSettings: React.FC = () => {
       quizWeight: Number(quizWeight),
       assignmentWeight: Number(assignmentWeight),
       activityWeight: Number(activityWeight),
+      attendanceWeight: Number(attendanceWeight),
+      participationWeight: Number(participationWeight),
       examWeight: Number(examWeight),
+      labExamWeight: Number(labExamWeight),
       automatedRiskAlerts,
     })
 
@@ -210,22 +216,13 @@ export const AdminSettings: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Quiz %</label>
                 <input
                   type="number"
                   value={quizWeight}
                   onChange={(e) => setQuizWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Assign %</label>
-                <input
-                  type="number"
-                  value={assignmentWeight}
-                  onChange={(e) => setAssignmentWeight(Number(e.target.value))}
                   style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
                 />
               </div>
@@ -245,6 +242,33 @@ export const AdminSettings: React.FC = () => {
                   value={examWeight}
                   onChange={(e) => setExamWeight(Number(e.target.value))}
                   style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Attendance %</label>
+                <input
+                  type="number"
+                  value={attendanceWeight}
+                  onChange={(e) => setAttendanceWeight(Number(e.target.value))}
+                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Participation %</label>
+                <input
+                  type="number"
+                  value={participationWeight}
+                  onChange={(e) => setParticipationWeight(Number(e.target.value))}
+                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b21a8', fontWeight: 700, marginBottom: '0.2rem' }}>Lab Exam % (Lab Subj)</label>
+                <input
+                  type="number"
+                  value={labExamWeight}
+                  onChange={(e) => setLabExamWeight(Number(e.target.value))}
+                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#faf5ff', color: '#6b21a8', border: '1.5px solid #d8b4fe', fontWeight: 700 }}
                 />
               </div>
             </div>

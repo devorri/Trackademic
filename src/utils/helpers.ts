@@ -31,9 +31,43 @@ export function getPrediction(overall: number, trendScore: number): PredictionSt
   return 'Average'
 }
 
+export function computeTemplateSubjectAverage(scores: {
+  prelimExam?: number
+  quiz?: number
+  activity?: number
+  attendance?: number
+  participation?: number
+  labExam?: number | null
+  midterm?: number
+  final?: number
+}, hasLaboratory: boolean): number {
+  const values: number[] = []
+  if (typeof scores.prelimExam === 'number' && scores.prelimExam > 0) values.push(scores.prelimExam)
+  if (typeof scores.quiz === 'number' && scores.quiz > 0) values.push(scores.quiz)
+  if (typeof scores.activity === 'number' && scores.activity > 0) values.push(scores.activity)
+  if (typeof scores.attendance === 'number' && scores.attendance > 0) values.push(scores.attendance)
+  if (typeof scores.participation === 'number' && scores.participation > 0) values.push(scores.participation)
+  if (hasLaboratory && typeof scores.labExam === 'number' && scores.labExam > 0) values.push(scores.labExam)
+  if (typeof scores.midterm === 'number' && scores.midterm > 0) values.push(scores.midterm)
+  if (typeof scores.final === 'number' && scores.final > 0) values.push(scores.final)
+
+  if (values.length === 0) return 0
+  const avg = values.reduce((sum, v) => sum + v, 0) / values.length
+  return Number(avg.toFixed(1))
+}
+
 export function computeGrade(row: GradeRow): PredictionAnalysis {
-  // Preliminary calculation with Quiz 30%, Activity 30%, Exam 40%
-  const preliminary = Math.round(row.quizzes * 0.3 + row.activities * 0.3 + (row.midtermExam || row.quizzes) * 0.4)
+  // Preliminary calculation with Quiz 20%, Activity 20%, Attendance 10%, Participation 10%, Exam 40%
+  const attScore = typeof row.attendance === 'number' ? row.attendance : 85
+  const partScore = typeof row.participation === 'number' ? row.participation : 85
+  
+  const preliminary = Math.round(
+    row.quizzes * 0.2 + 
+    row.activities * 0.2 + 
+    attScore * 0.1 + 
+    partScore * 0.1 + 
+    (row.midtermExam || row.quizzes) * 0.4
+  )
   const midterm = Math.round(preliminary * 0.4 + row.midtermExam * 0.6)
   const final = Math.round(preliminary * 0.25 + midterm * 0.25 + row.finalExam * 0.5)
 
@@ -52,6 +86,9 @@ export function computeGrade(row: GradeRow): PredictionAnalysis {
   if (row.quizzes < 75) riskFactors.push(`Low Quizzes average (${row.quizzes}%)`)
   if (row.assignments < 75) riskFactors.push(`Low Assignments average (${row.assignments}%)`)
   if (row.activities < 75) riskFactors.push(`Low Activities average (${row.activities}%)`)
+  if (typeof row.attendance === 'number' && row.attendance < 75) riskFactors.push(`Critical: Poor Attendance (${row.attendance}%)`)
+  if (typeof row.participation === 'number' && row.participation < 75) riskFactors.push(`Low Class Participation (${row.participation}%)`)
+  if (typeof row.labExam === 'number' && row.labExam < 75) riskFactors.push(`Weak Laboratory Exam score (${row.labExam}%)`)
   if (row.midtermExam < 75) riskFactors.push(`Sub-par Midterm Exam (${row.midtermExam}%)`)
   if (row.historical < 75) riskFactors.push(`Weak historical performance (${row.historical}%)`)
   if (riskFactors.length === 0 && (status === 'At Risk' || status === 'Bound to Fail')) {

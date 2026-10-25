@@ -12,14 +12,22 @@ import type {
   ActivityLogItem,
   SystemSettings,
   DetailedGradingSheet,
+  Role,
+  UserStatus,
 } from '../utils/types'
-import { computeGrade, computeClassAverages, getSubjectTitle } from '../utils/helpers'
+import { computeGrade, computeClassAverages, getSubjectTitle, computeTemplateSubjectAverage } from '../utils/helpers'
+import {
+  printStudentGradingBookReport,
+  printClassGradeReport,
+  type PrintClassStudentRow,
+} from '../utils/printReport'
 import {
   dbProfiles,
   dbStudents,
   dbSubjects,
   dbClasses,
   dbInstructors,
+  dbGradeSummaries,
 } from '../utils/db'
 import {
   initialUsers,
@@ -32,6 +40,7 @@ import {
   initialActivityLogs,
   initialSystemSettings,
   initialReports,
+  studentTemplateRecords,
 } from '../data/initialData'
 
 export const blankUser: Omit<User, 'id'> = {
@@ -133,13 +142,17 @@ interface DataContextType {
   updateDetailedGrade: (
     classId: string,
     studentId: string,
-    period: 'prelim' | 'midterm' | 'final',
-    field: 'exam' | 'quiz' | 'activities',
-    value: number,
+    periodOrField: any,
+    fieldOrValue: any,
+    value?: number,
   ) => void
+  updateAssessmentGrade: (classId: string, studentId: string, field: string, value: number) => void
   generateReport: (type: string, activeUserName: string) => void
   reportText: () => string
   printReport: () => void
+  printStudentGradingBookReport: (studentId?: string) => void
+  printClassGradeReport: (classId?: string) => void
+  studentTemplateRecords: typeof studentTemplateRecords
   markNotificationRead: (id: string) => void
   addNotification: (notif: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void
   addActivityLog: (actor: string, action: string, target?: string) => void
@@ -195,14 +208,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (profilesData && profilesData.length > 0) {
-          const usersData: User[] = profilesData.map((profile) => ({
-            id: profile.id,
-            name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'User',
-            email: profile.email,
-            role: profile.role,
-            status: profile.status,
-            password: profile.password_plain,
-          }))
+          const usersData: User[] = profilesData.map((profile) => {
+            const rawName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.name || 'User'
+            const role = (
+              profile.role === 'faculty' || profile.role === 'instructor' 
+                ? 'instructor' 
+                : profile.role === 'admin' || profile.role === 'administrator' 
+                ? 'administrator' 
+                : 'student'
+            ) as Role
+            const email = profile.email || `${rawName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@sandigan.edu.ph`
+            return {
+              id: profile.id,
+              name: rawName,
+              email: email,
+              role: role,
+              status: (profile.status as UserStatus) || 'active',
+              password: profile.password_plain || 'password123',
+            }
+          })
           setUsers((prev) => {
             const combined = [...usersData]
             for (const u of prev) {
@@ -1018,60 +1042,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     )
   }
 
-  function updateDetailedGrade(
+  function updateAssessmentGrade(
     classId: string,
     studentId: string,
-    period: 'prelim' | 'midterm' | 'final',
-    field: 'exam' | 'quiz' | 'activities',
+    field: string,
     value: number,
   ) {
+    const cls = classes.find((c) => c.id === classId)
+    const hasLab = cls?.subject?.has_laboratory ?? false
+
     setDetailedGradingSheets((current) => {
       const classSheet = current[classId] ?? []
       const updatedSheet = classSheet.map((item) => {
         if (item.studentId !== studentId) return item
 
-        const updatedPeriod = {
-          ...item[period],
+        const updatedItem = {
+          ...item,
           [field]: value,
         }
-        // Recalculate term grade dynamically based on available components
-        // (Exam 40%, Activities 30%, Quiz 30%)
-        const activeComponents: { score: number; weight: number }[] = []
-        if (updatedPeriod.quiz > 0) activeComponents.push({ score: updatedPeriod.quiz, weight: settings.quizWeight })
-        if (updatedPeriod.activities > 0) activeComponents.push({ score: updatedPeriod.activities, weight: settings.activityWeight })
-        if (updatedPeriod.exam > 0) activeComponents.push({ score: updatedPeriod.exam, weight: settings.examWeight })
 
-        let computedTermGrade = 0
-        if (activeComponents.length > 0) {
-          const totalWeight = activeComponents.reduce((sum, c) => sum + c.weight, 0)
-          const weightedSum = activeComponents.reduce((sum, c) => sum + (c.score * c.weight), 0)
-          computedTermGrade = Math.round(weightedSum / (totalWeight > 0 ? totalWeight : 1))
-        }
-        updatedPeriod.computedTermGrade = computedTermGrade
-
-        const prelimGrade = period === 'prelim' ? computedTermGrade : item.prelim.computedTermGrade
-        const midtermGrade = period === 'midterm' ? computedTermGrade : item.midterm.computedTermGrade
-        const finalGrade = period === 'final' ? computedTermGrade : item.final.computedTermGrade
-
-        // Dynamically check how many term grades exist (> 0) and take the average
-        const activeTerms = [prelimGrade, midtermGrade, finalGrade].filter((grade) => typeof grade === 'number' && grade > 0)
-        const overallAverage = activeTerms.length > 0
-          ? Number((activeTerms.reduce((sum, g) => sum + g, 0) / activeTerms.length).toFixed(1))
-          : 0
+        // Recalculate subject average based on template formula
+        const newAverage = computeTemplateSubjectAverage(updatedItem, hasLab)
+        updatedItem.average = newAverage
 
         let status: any = 'Average'
-        if (overallAverage >= 90) status = 'Excellent'
-        else if (overallAverage >= 83) status = 'Good'
-        else if (overallAverage >= 75) status = 'Average'
-        else if (overallAverage >= 70) status = 'At Risk'
+        if (newAverage >= 90) status = 'Excellent'
+        else if (newAverage >= 83) status = 'Good'
+        else if (newAverage >= 75) status = 'Average'
+        else if (newAverage >= 70) status = 'At Risk'
         else status = 'Bound to Fail'
+        updatedItem.status = status
 
-        return {
-          ...item,
-          [period]: updatedPeriod,
-          average: overallAverage,
-          status,
+        // Keep prelim term grade synced if applicable
+        if (updatedItem.prelim) {
+          updatedItem.prelim = {
+            ...updatedItem.prelim,
+            exam: field === 'prelimExam' ? value : updatedItem.prelim.exam,
+            quiz: field === 'quiz' ? value : updatedItem.prelim.quiz,
+            activities: field === 'activity' ? value : updatedItem.prelim.activities,
+            attendance: field === 'attendance' ? value : updatedItem.attendance,
+            participation: field === 'participation' ? value : updatedItem.participation,
+            labExam: field === 'labExam' ? value : updatedItem.labExam,
+            computedTermGrade: Math.round(newAverage),
+          }
         }
+
+        return updatedItem
       })
 
       return { ...current, [classId]: updatedSheet }
@@ -1079,8 +1095,54 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Also sync with main GradeRow
     const syncField: keyof GradeRow =
-      field === 'exam' ? (period === 'final' ? 'finalExam' : 'midtermExam') : field === 'quiz' ? 'quizzes' : 'activities'
+      field === 'prelimExam' || field === 'midterm'
+        ? 'midtermExam'
+        : field === 'final'
+        ? 'finalExam'
+        : field === 'quiz'
+        ? 'quizzes'
+        : field === 'attendance'
+        ? 'attendance'
+        : field === 'participation'
+        ? 'participation'
+        : field === 'labExam'
+        ? 'labExam'
+        : 'activities'
     updateGrade(classId, studentId, syncField, value)
+
+    // Persist grade summary to Supabase if valid UUID
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(classId) &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId)
+    ) {
+      const clsSheet = detailedGradingSheets[classId] || []
+      const currRow = clsSheet.find((r) => r.studentId === studentId)
+      if (currRow) {
+        dbGradeSummaries.upsert({
+          id: crypto.randomUUID(),
+          class_id: classId,
+          student_id: studentId,
+          overall_grade: currRow.average,
+          remarks: currRow.status,
+          computed_at: new Date().toISOString(),
+        }).catch((err) => console.warn('Supabase grade summary sync notice:', err))
+      }
+    }
+  }
+
+  function updateDetailedGrade(
+    classId: string,
+    studentId: string,
+    periodOrField: any,
+    fieldOrValue: any,
+    valueOptional?: number,
+  ) {
+    if (typeof valueOptional === 'number') {
+      const field = fieldOrValue === 'exam' ? 'prelimExam' : fieldOrValue === 'activities' ? 'activity' : fieldOrValue
+      updateAssessmentGrade(classId, studentId, field, valueOptional)
+    } else {
+      updateAssessmentGrade(classId, studentId, periodOrField, fieldOrValue)
+    }
   }
 
   function generateReport(type: any, activeUserName: string) {
@@ -1113,7 +1175,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       'Student,Prelim,Midterm,Final,Overall Grade,GPA,Prediction Status,Required Final Exam Score',
       ...gradebook.map((item) =>
         [
-          item.student?.student_no ?? item.student?.name ?? 'Unknown',
+          item.student?.name ?? item.student?.student_no ?? 'Student',
           item.computed.preliminary,
           item.computed.midterm,
           item.computed.final,
@@ -1127,12 +1189,64 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return lines.join('\n')
   }
 
+  function printClassGradeReportTrigger(classIdToPrint?: string) {
+    const clsId = classIdToPrint || selectedClass?.id
+    if (!clsId) return
+    const cls = classes.find((c) => c.id === clsId)
+    if (!cls) return
+    const subj = subjects.find((s) => s.id === cls.subject_id)
+    const inst = instructors.find((i) => i.id === cls.instructor_id)
+    const classSheet = detailedGradingSheets[clsId] || []
+
+    const studentRows: PrintClassStudentRow[] = classSheet.map((item) => {
+      const matchedStudent = students.find((s) => s.id === item.studentId)
+      return {
+        studentName: item.studentName || matchedStudent?.name || 'Student',
+        studentNo: item.studentNo || matchedStudent?.student_no,
+        prelimExam: item.prelimExam || item.prelim?.exam || 0,
+        quiz: item.quiz || item.prelim?.quiz || 0,
+        activity: item.activity || item.prelim?.activities || 0,
+        attendance: item.attendance ?? 85,
+        participation: item.participation ?? 85,
+        labExam: subj?.has_laboratory ? (item.labExam ?? 0) : null,
+        midterm: item.midterm || item.prelimExam || 0,
+        final: item.final || item.prelimExam || 0,
+        average: item.average || 0,
+        status: item.status || 'Average',
+      }
+    })
+
+    printClassGradeReport({
+      subjectCode: subj?.code || 'SUBJ',
+      subjectTitle: subj?.title || 'Subject Title',
+      hasLaboratory: subj?.has_laboratory ?? false,
+      sectionName: cls.section?.name || 'BSIT-2A',
+      instructorName: inst?.name || 'Trainer',
+      schedule: cls.schedule || 'TBA',
+      room: cls.room || 'Room 201',
+      schoolYear: `${settings.schoolYear} (${settings.semester})`,
+      students: studentRows,
+    })
+  }
+
+  function printStudentGradingBookReportTrigger(studentIdToPrint?: string) {
+    const stId = studentIdToPrint || 'stud-3'
+    const student = students.find((s) => s.id === stId) || students[0]
+    const templateData = studentTemplateRecords[stId] || studentTemplateRecords['stud-3']
+
+    printStudentGradingBookReport({
+      studentName: student?.name || templateData.studentName || 'Student Name',
+      section: student?.section_label || templateData.section || 'BSIT-2A',
+      schoolYear: `${settings.schoolYear} (${settings.semester})`,
+      rows: templateData.rows,
+      overallAverage: Number(
+        (templateData.rows.reduce((sum, r) => sum + r.subjectAverage, 0) / templateData.rows.length).toFixed(1),
+      ),
+    })
+  }
+
   function printReport() {
-    const printable = window.open('', '_blank')
-    if (!printable) return
-    printable.document.write(`<pre style="font-family: monospace; padding: 2rem;">${reportText()}</pre>`)
-    printable.document.close()
-    printable.print()
+    printClassGradeReportTrigger()
   }
 
   const value: DataContextType = {
@@ -1198,9 +1312,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     createClassFromSubject,
     updateGrade,
     updateDetailedGrade,
+    updateAssessmentGrade,
     generateReport,
     reportText,
     printReport,
+    printStudentGradingBookReport: printStudentGradingBookReportTrigger,
+    printClassGradeReport: printClassGradeReportTrigger,
+    studentTemplateRecords,
     markNotificationRead,
     enrollStudentInClasses,
     addNotification,

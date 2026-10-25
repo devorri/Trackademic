@@ -7,6 +7,8 @@ export function useReports() {
     generateReport,
     reportText,
     printReport,
+    printStudentGradingBookReport,
+    printClassGradeReport,
   } = useData()
 
   return {
@@ -15,5 +17,7 @@ export function useReports() {
     generateReport,
     reportText,
     printReport,
+    printStudentGradingBookReport,
+    printClassGradeReport,
   }
 }

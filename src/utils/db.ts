@@ -44,9 +44,13 @@ export const dbProfiles = {
   },
 
   async create(profile: Omit<Profile, 'id' | 'created_at' | 'updated_at'>) {
+    const payload = {
+      ...profile,
+      name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'User',
+    }
     const { data, error } = await supabase
       .from('profiles')
-      .insert([profile])
+      .insert([payload])
       .select()
       .single()
     if (error) throw error
@@ -54,9 +58,13 @@ export const dbProfiles = {
   },
 
   async update(id: string, updates: Partial<Omit<Profile, 'id' | 'created_at'>>) {
+    const payload: any = { ...updates, updated_at: new Date().toISOString() }
+    if (updates.first_name !== undefined || updates.last_name !== undefined) {
+      payload.name = updates.name || `${updates.first_name || ''} ${updates.last_name || ''}`.trim() || 'User'
+    }
     const { data, error } = await supabase
       .from('profiles')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq('id', id)
       .select()
       .single()
