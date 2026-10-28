@@ -238,6 +238,7 @@ export function printStudentGradingBookReport(params: {
   schoolYear: string
   rows: PrintStudentRow[]
   overallAverage: number
+  gradesOnly?: boolean
 }) {
   const printable = window.open('', '_blank')
   if (!printable) return
@@ -247,6 +248,153 @@ export function printStudentGradingBookReport(params: {
     month: 'long',
     day: 'numeric',
   })
+
+  if (params.gradesOnly) {
+    const getGpa = (score: number) => {
+      if (score >= 96) return '1.00'
+      if (score >= 91.5) return '1.25'
+      if (score >= 87) return '1.50'
+      if (score >= 82.5) return '1.75'
+      if (score >= 78) return '2.00'
+      if (score >= 73.5) return '2.25'
+      if (score >= 70) return '2.50'
+      if (score >= 65) return '2.75'
+      if (score >= 60) return '3.00'
+      return '5.00'
+    }
+
+    const summaryRowsHtml = params.rows
+      .map((r) => {
+        const pGrade = r.prelim?.computedTermGrade ?? r.subjectAverage
+        const mGrade = r.midterm?.computedTermGrade ?? r.subjectAverage
+        const fGrade = r.final?.computedTermGrade ?? r.subjectAverage
+        const passed = r.subjectAverage >= 75
+        return `
+        <tr>
+          <td style="font-weight: 800; color: #1e3a8a;">${r.code}</td>
+          <td class="col-subject">
+            ${r.title}
+          </td>
+          <td style="font-weight: 700;">${r.units}</td>
+          <td class="col-term-grade">${pGrade.toFixed(1)}%</td>
+          <td class="col-term-grade">${mGrade.toFixed(1)}%</td>
+          <td class="col-term-grade">${fGrade.toFixed(1)}%</td>
+          <td class="col-avg">${r.subjectAverage.toFixed(1)}%</td>
+          <td style="font-weight: 800; color: #0f172a;">${getGpa(r.subjectAverage)}</td>
+          <td style="font-weight: 800; color: ${passed ? '#15803d' : '#b91c1c'};">
+            ${passed ? 'PASSED' : 'AT RISK'}
+          </td>
+        </tr>
+      `
+      })
+      .join('')
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Official Report of Grades - ${params.studentName}</title>
+          <style>${COMMON_PRINT_STYLES}</style>
+        </head>
+        <body>
+          <div class="report-container">
+            <table class="header-table">
+              <tr>
+                <td style="vertical-align: middle;">
+                  <div class="institution-name">TRACKADEMIC UNIVERSITY SYSTEM</div>
+                  <div class="document-title">OFFICIAL STUDENT REPORT OF GRADES (PRELIM • MIDTERM • FINAL)</div>
+                  <div class="document-subtitle">Summary of Term Grades, Subject Averages & Academic Standing</div>
+                </td>
+                <td style="text-align: right; vertical-align: middle;">
+                  <div style="font-size: 9.5px; color: #64748b; font-weight: 700;">STUDENT COPY</div>
+                  <div style="font-size: 9.5px; color: #0f172a; font-weight: 800;">Date: ${dateStr}</div>
+                </td>
+              </tr>
+            </table>
+
+            <div class="meta-grid">
+              <div class="meta-cell" style="width: 45%;">
+                <div class="meta-label">Student Name</div>
+                <div class="meta-value" style="color: #1e3a8a; font-size: 13px;">${params.studentName}</div>
+              </div>
+              <div class="meta-cell" style="width: 25%;">
+                <div class="meta-label">Course & Section</div>
+                <div class="meta-value">${params.section}</div>
+              </div>
+              <div class="meta-cell" style="width: 30%;">
+                <div class="meta-label">Academic Period</div>
+                <div class="meta-value">${params.schoolYear}</div>
+              </div>
+            </div>
+
+            <table class="grading-table">
+              <thead>
+                <tr>
+                  <th style="width: 11%;">Subject Code</th>
+                  <th class="col-subject" style="width: 31%;">Subject Description</th>
+                  <th style="width: 7%;">Units</th>
+                  <th style="width: 11%; background: #1d4ed8;">Prelim Grade (30%)</th>
+                  <th style="width: 11%; background: #5b21b6;">Midterm Grade (30%)</th>
+                  <th style="width: 11%; background: #047857;">Final Grade (40%)</th>
+                  <th style="width: 10%; background: #0f766e;">Subject Average</th>
+                  <th style="width: 8%;">GPA</th>
+                  <th style="width: 10%;">Remarks</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${summaryRowsHtml}
+                <tr class="overall-row">
+                  <td colspan="6" style="text-align: right; font-weight: 900; letter-spacing: 0.05em; padding-right: 12px;">
+                    OVERALL ACADEMIC AVERAGE:
+                  </td>
+                  <td class="col-avg" style="font-size: 12px !important; color: #065f46; font-weight: 900;">
+                    ${params.overallAverage.toFixed(1)}%
+                  </td>
+                  <td style="font-weight: 900; color: #0f172a;">
+                    ${getGpa(params.overallAverage)}
+                  </td>
+                  <td style="font-weight: 900; color: ${params.overallAverage >= 75 ? '#15803d' : '#b91c1c'};">
+                    ${params.overallAverage >= 75 ? 'PASSED' : 'AT RISK'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="signatures">
+              <div class="sig-col">
+                <div class="sig-line">CLASS ADVISER / TRAINER</div>
+                <div class="sig-title">Faculty In-Charge</div>
+              </div>
+              <div class="sig-col">
+                <div class="sig-line">DEPARTMENT HEAD / DEAN</div>
+                <div class="sig-title">College of Information Technology (CIT)</div>
+              </div>
+              <div class="sig-col">
+                <div class="sig-line">UNIVERSITY REGISTRAR</div>
+                <div class="sig-title">Certified Official Record</div>
+              </div>
+            </div>
+
+            <div class="footer-note">
+              <span>Trackademic Academic Information & Grading System — Official Student Grade Report</span>
+              <span>Document ID: TRK-${Math.random().toString(36).substring(2, 9).toUpperCase()}</span>
+            </div>
+          </div>
+
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `
+
+    printable.document.open()
+    printable.document.write(html)
+    printable.document.close()
+    return
+  }
 
   const rowsHtml = params.rows
     .map((r) => {

@@ -5,6 +5,7 @@ import type {
   PredictionAnalysis,
   ClassAverages,
   DetailedTermScores,
+  TermComponentItems,
 } from './types'
 
 export function clampScore(value: string) {
@@ -117,6 +118,29 @@ export function computeOverallFromTerms(
   return Number((weightedSum / totalWeight).toFixed(1))
 }
 
+export function computeItemsAverage(scores: number[]): number {
+  if (!Array.isArray(scores) || scores.length === 0) return 0
+  const valid = scores.map((n) => (typeof n === 'number' && !Number.isNaN(n) ? n : 0))
+  const sum = valid.reduce((acc, val) => acc + val, 0)
+  return Number((sum / valid.length).toFixed(1))
+}
+
+export function buildDefaultItemsFromAverage(avgScore: number, count: number): number[] {
+  const base = Math.max(0, Math.min(100, Math.round(avgScore || 80)))
+  if (count <= 1) return [base]
+  if (count === 2) {
+    const d = base >= 1 && base <= 99 ? 1 : 0
+    return [base - d, base + d]
+  }
+  // count === 3 (e.g. Quiz 1, Quiz 2, Quiz 3 -> 82, 84, 86 for avg 84)
+  const d = base >= 2 && base <= 98 ? 2 : 0
+  const arr = [base - d, base, base + d]
+  while (arr.length < count) {
+    arr.push(base)
+  }
+  return arr
+}
+
 export function ensureTermScores(
   rawTerm: any,
   fallbackBase: number = 82,
@@ -124,11 +148,26 @@ export function ensureTermScores(
 ): DetailedTermScores {
   if (typeof rawTerm === 'number') {
     const base = rawTerm || fallbackBase
-    const attendance = Math.min(100, base + 4)
-    const quiz = base
-    const labActivity = hasLaboratory ? base + 1 : null
-    const activity = Math.min(100, base + 2)
-    const exam = base
+    const attendanceAvg = Math.min(100, base + 4)
+    const quizAvg = base
+    const labAvg = hasLaboratory ? base + 1 : null
+    const activityAvg = Math.min(100, base + 2)
+    const examAvg = base
+
+    const items: TermComponentItems = {
+      attendance: buildDefaultItemsFromAverage(attendanceAvg, 2),
+      quiz: buildDefaultItemsFromAverage(quizAvg, 3),
+      labActivity: hasLaboratory ? buildDefaultItemsFromAverage(labAvg ?? base, 2) : [],
+      activity: buildDefaultItemsFromAverage(activityAvg, 2),
+      exam: buildDefaultItemsFromAverage(examAvg, 1),
+    }
+
+    const attendance = computeItemsAverage(items.attendance)
+    const quiz = computeItemsAverage(items.quiz)
+    const labActivity = hasLaboratory ? computeItemsAverage(items.labActivity) : null
+    const activity = computeItemsAverage(items.activity)
+    const exam = computeItemsAverage(items.exam)
+
     const computedTermGrade = computeTermGrade(
       { attendance, quiz, labActivity, activity, exam },
       hasLaboratory,
@@ -140,20 +179,22 @@ export function ensureTermScores(
       activity,
       exam,
       computedTermGrade,
+      items,
       activities: activity,
       labExam: labActivity,
     }
   }
 
-  const attendance = typeof rawTerm?.attendance === 'number' ? rawTerm.attendance : fallbackBase + 4
-  const quiz = typeof rawTerm?.quiz === 'number' ? rawTerm.quiz : fallbackBase
-  const activity =
+  const baseAttendance =
+    typeof rawTerm?.attendance === 'number' ? rawTerm.attendance : fallbackBase + 4
+  const baseQuiz = typeof rawTerm?.quiz === 'number' ? rawTerm.quiz : fallbackBase
+  const baseActivity =
     typeof rawTerm?.activity === 'number'
       ? rawTerm.activity
       : typeof rawTerm?.activities === 'number'
       ? rawTerm.activities
       : fallbackBase + 2
-  const exam = typeof rawTerm?.exam === 'number' ? rawTerm.exam : fallbackBase
+  const baseExam = typeof rawTerm?.exam === 'number' ? rawTerm.exam : fallbackBase
   const rawLab =
     rawTerm?.labActivity !== undefined
       ? rawTerm.labActivity
@@ -162,7 +203,37 @@ export function ensureTermScores(
       : hasLaboratory
       ? fallbackBase + 1
       : null
-  const labActivity = hasLaboratory ? (typeof rawLab === 'number' ? rawLab : fallbackBase) : null
+  const baseLab = hasLaboratory ? (typeof rawLab === 'number' ? rawLab : fallbackBase) : null
+
+  const items: TermComponentItems = {
+    attendance:
+      Array.isArray(rawTerm?.items?.attendance) && rawTerm.items.attendance.length > 0
+        ? rawTerm.items.attendance
+        : buildDefaultItemsFromAverage(baseAttendance, 2),
+    quiz:
+      Array.isArray(rawTerm?.items?.quiz) && rawTerm.items.quiz.length > 0
+        ? rawTerm.items.quiz
+        : buildDefaultItemsFromAverage(baseQuiz, 3),
+    labActivity: hasLaboratory
+      ? Array.isArray(rawTerm?.items?.labActivity) && rawTerm.items.labActivity.length > 0
+        ? rawTerm.items.labActivity
+        : buildDefaultItemsFromAverage(baseLab ?? fallbackBase, 2)
+      : [],
+    activity:
+      Array.isArray(rawTerm?.items?.activity) && rawTerm.items.activity.length > 0
+        ? rawTerm.items.activity
+        : buildDefaultItemsFromAverage(baseActivity, 2),
+    exam:
+      Array.isArray(rawTerm?.items?.exam) && rawTerm.items.exam.length > 0
+        ? rawTerm.items.exam
+        : buildDefaultItemsFromAverage(baseExam, 1),
+  }
+
+  const attendance = computeItemsAverage(items.attendance)
+  const quiz = computeItemsAverage(items.quiz)
+  const labActivity = hasLaboratory ? computeItemsAverage(items.labActivity) : null
+  const activity = computeItemsAverage(items.activity)
+  const exam = computeItemsAverage(items.exam)
 
   const computedTermGrade = computeTermGrade(
     { attendance, quiz, labActivity, activity, exam },
@@ -176,6 +247,7 @@ export function ensureTermScores(
     activity,
     exam,
     computedTermGrade,
+    items,
     activities: activity,
     labExam: labActivity,
   }

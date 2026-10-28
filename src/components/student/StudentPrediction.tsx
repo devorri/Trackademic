@@ -80,7 +80,7 @@ export const StudentPrediction: React.FC = () => {
           <TrendingUp size={24} color="#2563eb" /> Academic Outcome Forecast
         </h3>
         <p style={{ margin: 0, color: '#475569', fontSize: '0.92rem' }}>
-          Predictive model estimates your end-of-semester result based on current quizzes, midterms, and activity trends.
+          Predictive model estimates your end-of-semester result based on your Preliminary, Midterm, and Final term grades.
         </p>
 
         {/* 3 Metric Cards */}

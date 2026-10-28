@@ -216,6 +216,14 @@ export type Report = {
 export type GradingPeriodKey = 'prelim' | 'midterm' | 'final'
 export type TermComponentField = 'attendance' | 'quiz' | 'labActivity' | 'activity' | 'exam'
 
+export type TermComponentItems = {
+  attendance: number[]
+  quiz: number[]
+  labActivity: number[]
+  activity: number[]
+  exam: number[]
+}
+
 export type DetailedTermScores = {
   attendance: number
   quiz: number
@@ -223,6 +231,7 @@ export type DetailedTermScores = {
   activity: number
   exam: number
   computedTermGrade: number
+  items?: TermComponentItems
   // Legacy compatibility
   activities?: number
   participation?: number

@@ -24,6 +24,7 @@ import {
   getSubjectTitle,
   computeTermGrade,
   computeOverallFromTerms,
+  computeItemsAverage,
   ensureTermScores,
   normalizeCourseSection,
   formatCourseSection,
@@ -203,11 +204,29 @@ interface DataContextType {
     fieldOrValue: TermComponentField | string | number,
     value?: number,
   ) => void
+  updateComponentItemScore: (
+    classId: string,
+    studentId: string,
+    period: GradingPeriodKey,
+    field: TermComponentField,
+    itemIndex: number,
+    value: number,
+  ) => void
+  addComponentColumn: (
+    classId: string,
+    period: GradingPeriodKey,
+    field: TermComponentField,
+  ) => void
+  removeComponentColumn: (
+    classId: string,
+    period: GradingPeriodKey,
+    field: TermComponentField,
+  ) => void
   updateAssessmentGrade: (classId: string, studentId: string, field: string, value: number) => void
   generateReport: (type: string, activeUserName: string) => void
   reportText: () => string
   printReport: () => void
-  printStudentGradingBookReport: (studentId?: string) => void
+  printStudentGradingBookReport: (studentId?: string, gradesOnly?: boolean) => void
   printClassGradeReport: (classId?: string) => void
   studentTemplateRecords: typeof studentTemplateRecords
   markNotificationRead: (id: string) => void
@@ -1528,6 +1547,372 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     updateDetailedGrade(classId, studentId, 'prelim', field as TermComponentField, value)
   }
 
+  function updateComponentItemScore(
+    classId: string,
+    studentId: string,
+    period: GradingPeriodKey,
+    field: TermComponentField,
+    itemIndex: number,
+    value: number,
+  ) {
+    const cls = classes.find((c) => c.id === classId)
+    const currentSubject = subjects.find((s) => s.id === cls?.subject_id)
+    const hasLab = currentSubject?.has_laboratory ?? cls?.subject?.has_laboratory ?? false
+
+    let updatedRowRef: DetailedGradingSheet | null = null
+    let newCategoryAverage = value
+
+    setDetailedGradingSheets((current) => {
+      const classSheet = current[classId] ?? []
+      const hasStudent = classSheet.some((item) => item.studentId === studentId)
+      const baseSheet = hasStudent
+        ? classSheet
+        : [
+            ...classSheet,
+            createDefaultStudentSheet(
+              studentId,
+              students.find((s) => s.id === studentId)?.name || 'Student',
+              students.find((s) => s.id === studentId)?.student_no || 'N/A',
+              hasLab,
+            ),
+          ]
+
+      const updatedSheet = baseSheet.map((item) => {
+        if (item.studentId !== studentId) return item
+
+        const currentPrelim = ensureTermScores(item.prelim, 82, hasLab)
+        const currentMidterm = ensureTermScores(item.midterm, 83, hasLab)
+        const currentFinal = ensureTermScores(item.final, 85, hasLab)
+
+        const targetTerm =
+          period === 'prelim'
+            ? currentPrelim
+            : period === 'midterm'
+            ? currentMidterm
+            : currentFinal
+
+        const existingItems = targetTerm.items || {
+          attendance: [targetTerm.attendance],
+          quiz: [targetTerm.quiz],
+          labActivity: hasLab ? [targetTerm.labActivity ?? 85] : [],
+          activity: [targetTerm.activity],
+          exam: [targetTerm.exam],
+        }
+
+        const currentFieldArr = [...(existingItems[field] || [])]
+        while (currentFieldArr.length <= itemIndex) {
+          currentFieldArr.push(80)
+        }
+        currentFieldArr[itemIndex] = value
+
+        const updatedItems = {
+          ...existingItems,
+          [field]: currentFieldArr,
+        }
+
+        const nextAttendance = computeItemsAverage(updatedItems.attendance)
+        const nextQuiz = computeItemsAverage(updatedItems.quiz)
+        const nextLab = hasLab ? computeItemsAverage(updatedItems.labActivity) : null
+        const nextActivity = computeItemsAverage(updatedItems.activity)
+        const nextExam = computeItemsAverage(updatedItems.exam)
+
+        newCategoryAverage =
+          field === 'attendance'
+            ? nextAttendance
+            : field === 'quiz'
+            ? nextQuiz
+            : field === 'labActivity'
+            ? nextLab ?? 0
+            : field === 'activity'
+            ? nextActivity
+            : nextExam
+
+        const updatedTerm: DetailedTermScores = {
+          ...targetTerm,
+          attendance: nextAttendance,
+          quiz: nextQuiz,
+          labActivity: nextLab,
+          activity: nextActivity,
+          exam: nextExam,
+          items: updatedItems,
+          activities: nextActivity,
+          labExam: nextLab,
+          computedTermGrade: 0,
+        }
+        updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
+
+        const nextPrelim = period === 'prelim' ? updatedTerm : currentPrelim
+        const nextMidterm = period === 'midterm' ? updatedTerm : currentMidterm
+        const nextFinal = period === 'final' ? updatedTerm : currentFinal
+
+        const newAverage = computeOverallFromTerms(
+          nextPrelim.computedTermGrade,
+          nextMidterm.computedTermGrade,
+          nextFinal.computedTermGrade,
+        )
+
+        let status: any = 'On Track'
+        if (newAverage >= 90) status = 'Excellent'
+        else if (newAverage >= 85) status = 'Good'
+        else if (newAverage >= 75) status = 'On Track'
+        else if (newAverage >= 70) status = 'At Risk'
+        else status = 'Bound to Fail'
+
+        const updatedItem: DetailedGradingSheet = {
+          ...item,
+          prelim: nextPrelim,
+          midterm: nextMidterm,
+          final: nextFinal,
+          prelimExam: nextPrelim.exam,
+          quiz: nextPrelim.quiz,
+          activity: nextPrelim.activity,
+          attendance: nextPrelim.attendance,
+          labExam: nextPrelim.labActivity,
+          average: newAverage,
+          status,
+        }
+
+        updatedRowRef = updatedItem
+        return updatedItem
+      })
+
+      return { ...current, [classId]: updatedSheet }
+    })
+
+    // Sync with main GradeRow
+    setGrades((current) => {
+      const existing = current[classId] ?? []
+      const updated = existing.map((row) => {
+        if (row.studentId !== studentId || !updatedRowRef) return row
+        return {
+          ...row,
+          quizzes: updatedRowRef.prelim.quiz,
+          activities: updatedRowRef.prelim.activity,
+          attendance: updatedRowRef.prelim.attendance,
+          labExam: updatedRowRef.prelim.labActivity ?? undefined,
+          midtermExam: updatedRowRef.midterm.exam,
+          finalExam: updatedRowRef.final.exam,
+          prelim: updatedRowRef.prelim,
+          midterm: updatedRowRef.midterm,
+          final: updatedRowRef.final,
+        }
+      })
+      return { ...current, [classId]: updated }
+    })
+
+    // Persist computed category average & term summary to Supabase if valid UUIDs
+    const isUuid = (val: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
+    if (isUuid(classId) && isUuid(studentId)) {
+      const dbPeriod: 'Preliminary' | 'Midterm' | 'Final' =
+        period === 'midterm' ? 'Midterm' : period === 'final' ? 'Final' : 'Preliminary'
+      const compMeta: Record<TermComponentField, { name: string; weight: number }> = {
+        attendance: { name: 'Attendance', weight: 10 },
+        quiz: { name: 'Quiz', weight: hasLab ? 20 : 25 },
+        labActivity: { name: 'Lab Activity', weight: 20 },
+        activity: { name: 'Activity', weight: hasLab ? 10 : 25 },
+        exam: { name: 'Exam', weight: 40 },
+      }
+      const { name: componentName, weight } = compMeta[field]
+
+      dbGrades
+        .upsertComponentScore({
+          classId,
+          studentId,
+          gradingPeriod: dbPeriod,
+          componentName,
+          weight,
+          score: newCategoryAverage,
+        })
+        .catch((err) => console.warn('Supabase component score sync notice:', err))
+
+      if (updatedRowRef) {
+        const rowSnapshot = updatedRowRef as DetailedGradingSheet
+        dbGradeSummaries
+          .upsert({
+            class_id: classId,
+            student_id: studentId,
+            preliminary_grade: rowSnapshot.prelim.computedTermGrade,
+            midterm_grade: rowSnapshot.midterm.computedTermGrade,
+            final_grade: rowSnapshot.final.computedTermGrade,
+            overall_grade: rowSnapshot.average,
+            remarks: rowSnapshot.status,
+            computed_at: new Date().toISOString(),
+          })
+          .catch((err) => console.warn('Supabase grade summary sync notice:', err))
+      }
+    }
+  }
+
+  function addComponentColumn(
+    classId: string,
+    period: GradingPeriodKey,
+    field: TermComponentField,
+  ) {
+    const cls = classes.find((c) => c.id === classId)
+    const currentSubject = subjects.find((s) => s.id === cls?.subject_id)
+    const hasLab = currentSubject?.has_laboratory ?? cls?.subject?.has_laboratory ?? false
+
+    setDetailedGradingSheets((current) => {
+      const classSheet = current[classId] ?? []
+      const updatedSheet = classSheet.map((item) => {
+        const currentPrelim = ensureTermScores(item.prelim, 82, hasLab)
+        const currentMidterm = ensureTermScores(item.midterm, 83, hasLab)
+        const currentFinal = ensureTermScores(item.final, 85, hasLab)
+
+        const targetTerm =
+          period === 'prelim'
+            ? currentPrelim
+            : period === 'midterm'
+            ? currentMidterm
+            : currentFinal
+
+        const existingItems = targetTerm.items || {
+          attendance: [targetTerm.attendance],
+          quiz: [targetTerm.quiz],
+          labActivity: hasLab ? [targetTerm.labActivity ?? 85] : [],
+          activity: [targetTerm.activity],
+          exam: [targetTerm.exam],
+        }
+
+        const currentFieldArr = [...(existingItems[field] || [])]
+        const defaultNewScore =
+          currentFieldArr.length > 0
+            ? Math.round(computeItemsAverage(currentFieldArr))
+            : 85
+        currentFieldArr.push(defaultNewScore)
+
+        const updatedItems = {
+          ...existingItems,
+          [field]: currentFieldArr,
+        }
+
+        const nextAttendance = computeItemsAverage(updatedItems.attendance)
+        const nextQuiz = computeItemsAverage(updatedItems.quiz)
+        const nextLab = hasLab ? computeItemsAverage(updatedItems.labActivity) : null
+        const nextActivity = computeItemsAverage(updatedItems.activity)
+        const nextExam = computeItemsAverage(updatedItems.exam)
+
+        const updatedTerm: DetailedTermScores = {
+          ...targetTerm,
+          attendance: nextAttendance,
+          quiz: nextQuiz,
+          labActivity: nextLab,
+          activity: nextActivity,
+          exam: nextExam,
+          items: updatedItems,
+          activities: nextActivity,
+          labExam: nextLab,
+          computedTermGrade: 0,
+        }
+        updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
+
+        const nextPrelim = period === 'prelim' ? updatedTerm : currentPrelim
+        const nextMidterm = period === 'midterm' ? updatedTerm : currentMidterm
+        const nextFinal = period === 'final' ? updatedTerm : currentFinal
+
+        const newAverage = computeOverallFromTerms(
+          nextPrelim.computedTermGrade,
+          nextMidterm.computedTermGrade,
+          nextFinal.computedTermGrade,
+        )
+
+        return {
+          ...item,
+          prelim: nextPrelim,
+          midterm: nextMidterm,
+          final: nextFinal,
+          average: newAverage,
+        }
+      })
+
+      return { ...current, [classId]: updatedSheet }
+    })
+  }
+
+  function removeComponentColumn(
+    classId: string,
+    period: GradingPeriodKey,
+    field: TermComponentField,
+  ) {
+    const cls = classes.find((c) => c.id === classId)
+    const currentSubject = subjects.find((s) => s.id === cls?.subject_id)
+    const hasLab = currentSubject?.has_laboratory ?? cls?.subject?.has_laboratory ?? false
+
+    setDetailedGradingSheets((current) => {
+      const classSheet = current[classId] ?? []
+      const updatedSheet = classSheet.map((item) => {
+        const currentPrelim = ensureTermScores(item.prelim, 82, hasLab)
+        const currentMidterm = ensureTermScores(item.midterm, 83, hasLab)
+        const currentFinal = ensureTermScores(item.final, 85, hasLab)
+
+        const targetTerm =
+          period === 'prelim'
+            ? currentPrelim
+            : period === 'midterm'
+            ? currentMidterm
+            : currentFinal
+
+        const existingItems = targetTerm.items || {
+          attendance: [targetTerm.attendance],
+          quiz: [targetTerm.quiz],
+          labActivity: hasLab ? [targetTerm.labActivity ?? 85] : [],
+          activity: [targetTerm.activity],
+          exam: [targetTerm.exam],
+        }
+
+        const currentFieldArr = [...(existingItems[field] || [])]
+        if (currentFieldArr.length <= 1) return item
+        currentFieldArr.pop()
+
+        const updatedItems = {
+          ...existingItems,
+          [field]: currentFieldArr,
+        }
+
+        const nextAttendance = computeItemsAverage(updatedItems.attendance)
+        const nextQuiz = computeItemsAverage(updatedItems.quiz)
+        const nextLab = hasLab ? computeItemsAverage(updatedItems.labActivity) : null
+        const nextActivity = computeItemsAverage(updatedItems.activity)
+        const nextExam = computeItemsAverage(updatedItems.exam)
+
+        const updatedTerm: DetailedTermScores = {
+          ...targetTerm,
+          attendance: nextAttendance,
+          quiz: nextQuiz,
+          labActivity: nextLab,
+          activity: nextActivity,
+          exam: nextExam,
+          items: updatedItems,
+          activities: nextActivity,
+          labExam: nextLab,
+          computedTermGrade: 0,
+        }
+        updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
+
+        const nextPrelim = period === 'prelim' ? updatedTerm : currentPrelim
+        const nextMidterm = period === 'midterm' ? updatedTerm : currentMidterm
+        const nextFinal = period === 'final' ? updatedTerm : currentFinal
+
+        const newAverage = computeOverallFromTerms(
+          nextPrelim.computedTermGrade,
+          nextMidterm.computedTermGrade,
+          nextFinal.computedTermGrade,
+        )
+
+        return {
+          ...item,
+          prelim: nextPrelim,
+          midterm: nextMidterm,
+          final: nextFinal,
+          average: newAverage,
+        }
+      })
+
+      return { ...current, [classId]: updatedSheet }
+    })
+  }
+
   function generateReport(type: any, activeUserName: string) {
     const report: Report = {
       id: crypto.randomUUID(),
@@ -1626,7 +2011,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
   }
 
-  function printStudentGradingBookReportTrigger(studentIdToPrint?: string) {
+  function printStudentGradingBookReportTrigger(studentIdToPrint?: string, gradesOnly?: boolean) {
     const stId = studentIdToPrint || 'stud-3'
     const student = students.find((s) => s.id === stId) || students[0]
     const templateData = studentTemplateRecords[stId] || studentTemplateRecords['stud-3']
@@ -1642,6 +2027,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           templateData.rows.length
         ).toFixed(1),
       ),
+      gradesOnly,
     })
   }
 
@@ -1712,6 +2098,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     createClassFromSubject,
     updateGrade,
     updateDetailedGrade,
+    updateComponentItemScore,
+    addComponentColumn,
+    removeComponentColumn,
     updateAssessmentGrade,
     generateReport,
     reportText,
