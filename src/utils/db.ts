@@ -44,10 +44,16 @@ export const dbProfiles = {
   },
 
   async create(profile: Omit<Profile, 'id' | 'created_at' | 'updated_at'>) {
-    const payload = {
-      ...profile,
-      name: profile.name || `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'User',
+    const payload: Record<string, any> = {
+      email: profile.email,
+      password_plain: profile.password_plain || 'password123',
+      first_name: profile.first_name || profile.name?.split(' ')[0] || 'User',
+      last_name: profile.last_name ?? (profile.name?.split(' ').slice(1).join(' ') || ''),
+      role: profile.role || 'student',
+      status: profile.status || 'active',
     }
+    if (profile.avatar_url) payload.avatar_url = profile.avatar_url
+
     const { data, error } = await supabase
       .from('profiles')
       .insert([payload])
@@ -58,9 +64,10 @@ export const dbProfiles = {
   },
 
   async update(id: string, updates: Partial<Omit<Profile, 'id' | 'created_at'>>) {
-    const payload: any = { ...updates, updated_at: new Date().toISOString() }
-    if (updates.first_name !== undefined || updates.last_name !== undefined) {
-      payload.name = updates.name || `${updates.first_name || ''} ${updates.last_name || ''}`.trim() || 'User'
+    const { name: _name, face_embedding: _fe, camera_status: _cs, ...validUpdates } = updates as any
+    const payload: Record<string, any> = {
+      ...validUpdates,
+      updated_at: new Date().toISOString(),
     }
     const { data, error } = await supabase
       .from('profiles')
@@ -162,9 +169,16 @@ export const dbStudents = {
   },
 
   async create(student: Omit<Student, 'id' | 'created_at'>) {
+    const payload = {
+      profile_id: student.profile_id,
+      student_no: student.student_no,
+      course: student.course || 'CIT',
+      year_level: student.year_level || 1,
+      section_label: student.section_label || 'A',
+    }
     const { data, error } = await supabase
       .from('students')
-      .insert([student])
+      .insert([payload])
       .select()
       .single()
     if (error) throw error
@@ -172,7 +186,18 @@ export const dbStudents = {
   },
 
   async update(id: string, updates: Partial<Omit<Student, 'id' | 'created_at'>>) {
-    const { name: _n, email: _e, password: _p, studentNo: _sNo, profiles: _prof, ...cleanUpdates } = updates as any
+    const cleanUpdates: Record<string, any> = {}
+    if (updates.student_no !== undefined) cleanUpdates.student_no = updates.student_no
+    if (updates.course !== undefined) cleanUpdates.course = updates.course
+    if (updates.year_level !== undefined) cleanUpdates.year_level = updates.year_level
+    if (updates.section_label !== undefined) cleanUpdates.section_label = updates.section_label
+    if (
+      updates.profile_id &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updates.profile_id)
+    ) {
+      cleanUpdates.profile_id = updates.profile_id
+    }
+
     const { data, error } = await supabase
       .from('students')
       .update(cleanUpdates)
@@ -220,24 +245,34 @@ export const dbSubjects = {
   },
 
   async create(subject: Omit<Subject, 'id' | 'created_at'>) {
+    const payload = {
+      code: subject.code,
+      title: subject.title,
+      units: subject.units,
+    }
     const { data, error } = await supabase
       .from('subjects')
-      .insert([subject])
+      .insert([payload])
       .select()
       .single()
     if (error) throw error
-    return data as Subject
+    return { ...subject, ...data } as Subject
   },
 
   async update(id: string, updates: Partial<Omit<Subject, 'id' | 'created_at'>>) {
+    const payload: Record<string, any> = {}
+    if (updates.code !== undefined) payload.code = updates.code
+    if (updates.title !== undefined) payload.title = updates.title
+    if (updates.units !== undefined) payload.units = updates.units
+
     const { data, error } = await supabase
       .from('subjects')
-      .update(updates)
+      .update(payload)
       .eq('id', id)
       .select()
       .single()
     if (error) throw error
-    return data as Subject
+    return { ...updates, ...data } as Subject
   },
 
   async delete(id: string) {
@@ -311,11 +346,15 @@ export const dbClasses = {
       instructor: classItem.instructors
         ? {
             ...classItem.instructors,
-            name: `${classItem.instructors.profiles?.first_name || ''} ${classItem.instructors.profiles?.last_name || ''}`.trim() || 'Instructor',
+            name:
+              `${classItem.instructors.profiles?.first_name || ''} ${classItem.instructors.profiles?.last_name || ''}`.trim() ||
+              'Instructor',
             email: classItem.instructors.profiles?.email,
           }
         : undefined,
-      studentIds: (classItem.class_students ?? []).map((enrollment: { student_id: string }) => enrollment.student_id),
+      studentIds: (classItem.class_students ?? []).map(
+        (enrollment: { student_id: string }) => enrollment.student_id,
+      ),
     })) as (ClassRecord & {
       subjects?: Subject
       sections?: Section
@@ -337,11 +376,15 @@ export const dbClasses = {
       instructor: (data as any).instructors
         ? {
             ...(data as any).instructors,
-            name: `${(data as any).instructors.profiles?.first_name || ''} ${(data as any).instructors.profiles?.last_name || ''}`.trim() || 'Instructor',
+            name:
+              `${(data as any).instructors.profiles?.first_name || ''} ${(data as any).instructors.profiles?.last_name || ''}`.trim() ||
+              'Instructor',
             email: (data as any).instructors.profiles?.email,
           }
         : undefined,
-      studentIds: (data.class_students ?? []).map((enrollment: { student_id: string }) => enrollment.student_id),
+      studentIds: (data.class_students ?? []).map(
+        (enrollment: { student_id: string }) => enrollment.student_id,
+      ),
     } as ClassRecord & {
       subjects?: Subject
       sections?: Section
@@ -351,7 +394,7 @@ export const dbClasses = {
 
   async create(
     classData: Omit<ClassRecord, 'id' | 'created_at' | 'studentIds'>,
-    studentIds?: string[]
+    studentIds?: string[],
   ) {
     const {
       studentIds: _studentIds,
@@ -373,7 +416,7 @@ export const dbClasses = {
     if (error) throw error
 
     const uniqueStudentIds = [...new Set(studentIds ?? [])].filter((sid) =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid),
     )
     if (uniqueStudentIds.length > 0) {
       const classStudents = uniqueStudentIds.map((studentId) => ({
@@ -418,7 +461,7 @@ export const dbClasses = {
       if (deleteEnrollmentError) console.warn('Delete enrollment error:', deleteEnrollmentError)
 
       const uniqueStudentIds = [...new Set(_studentIds)].filter((sid) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid)
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid),
       )
       if (uniqueStudentIds.length > 0) {
         const { error: enrollmentError } = await supabase
@@ -442,7 +485,10 @@ export const dbClasses = {
   async addStudent(classId: string, studentId: string) {
     const { error } = await supabase
       .from('class_students')
-      .upsert({ class_id: classId, student_id: studentId }, { onConflict: 'class_id,student_id', ignoreDuplicates: true })
+      .upsert(
+        { class_id: classId, student_id: studentId },
+        { onConflict: 'class_id,student_id', ignoreDuplicates: true },
+      )
     if (error) throw error
   },
 
@@ -563,6 +609,76 @@ export const dbGrades = {
     return data as Grade
   },
 
+  async upsertComponentScore(params: {
+    classId: string
+    studentId: string
+    gradingPeriod: 'Preliminary' | 'Midterm' | 'Final'
+    componentName: string
+    weight: number
+    score: number
+  }) {
+    // 1. Find or create grade_component
+    const { data: existingComp } = await supabase
+      .from('grade_components')
+      .select('*')
+      .eq('class_id', params.classId)
+      .eq('grading_period', params.gradingPeriod)
+      .eq('name', params.componentName)
+      .maybeSingle()
+
+    let componentId = existingComp?.id
+    if (!componentId) {
+      const { data: createdComp, error: compErr } = await supabase
+        .from('grade_components')
+        .insert([
+          {
+            class_id: params.classId,
+            name: params.componentName,
+            grading_period: params.gradingPeriod,
+            weight: params.weight,
+            max_score: 100,
+          },
+        ])
+        .select()
+        .single()
+      if (compErr) throw compErr
+      componentId = createdComp.id
+    }
+
+    // 2. Find or create grade record
+    const { data: existingGrade } = await supabase
+      .from('grades')
+      .select('*')
+      .eq('component_id', componentId)
+      .eq('student_id', params.studentId)
+      .maybeSingle()
+
+    if (existingGrade?.id) {
+      const { data, error } = await supabase
+        .from('grades')
+        .update({ score: params.score, updated_at: new Date().toISOString() })
+        .eq('id', existingGrade.id)
+        .select()
+        .single()
+      if (error) throw error
+      return data as Grade
+    } else {
+      const { data, error } = await supabase
+        .from('grades')
+        .insert([
+          {
+            component_id: componentId,
+            student_id: params.studentId,
+            score: params.score,
+          },
+        ])
+        .select()
+        .single()
+      if (error) throw error
+      return data as Grade
+    }
+  },
+
   async delete(id: string) {
     const { error } = await supabase.from('grades').delete().eq('id', id)
     if (error) throw error
@@ -574,6 +690,12 @@ export const dbGrades = {
 // ============================================
 
 export const dbGradeSummaries = {
+  async getAll() {
+    const { data, error } = await supabase.from('grade_summaries').select('*')
+    if (error) throw error
+    return data as GradeSummary[]
+  },
+
   async getByClass(classId: string) {
     const { data, error } = await supabase
       .from('grade_summaries')
@@ -589,19 +711,48 @@ export const dbGradeSummaries = {
       .select('*')
       .eq('class_id', classId)
       .eq('student_id', studentId)
-      .single()
+      .maybeSingle()
     if (error) throw error
-    return data as GradeSummary
+    return data as GradeSummary | null
   },
 
-  async upsert(summary: GradeSummary) {
-    const { data, error } = await supabase
+  async upsert(summary: Omit<GradeSummary, 'id'> & { id?: string }) {
+    const { data: existing } = await supabase
       .from('grade_summaries')
-      .upsert([summary], { onConflict: 'class_id, student_id' })
-      .select()
-      .single()
-    if (error) throw error
-    return data as GradeSummary
+      .select('id')
+      .eq('class_id', summary.class_id)
+      .eq('student_id', summary.student_id)
+      .maybeSingle()
+
+    const payload = {
+      class_id: summary.class_id,
+      student_id: summary.student_id,
+      preliminary_grade: summary.preliminary_grade,
+      midterm_grade: summary.midterm_grade,
+      final_grade: summary.final_grade,
+      overall_grade: summary.overall_grade,
+      remarks: summary.remarks,
+      computed_at: new Date().toISOString(),
+    }
+
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('grade_summaries')
+        .update(payload)
+        .eq('id', existing.id)
+        .select()
+        .single()
+      if (error) throw error
+      return data as GradeSummary
+    } else {
+      const { data, error } = await supabase
+        .from('grade_summaries')
+        .insert([payload])
+        .select()
+        .single()
+      if (error) throw error
+      return data as GradeSummary
+    }
   },
 }
 

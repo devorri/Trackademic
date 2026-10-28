@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useData } from '../../context/DataContext'
 import type { ClassRecord } from '../../utils/types'
-import { getSubjectTitle } from '../../utils/helpers'
+import { getSubjectTitle, formatCourseSection } from '../../utils/helpers'
 import { dbInstructors, dbSections } from '../../utils/db'
 import { Plus, User, MapPin, Clock, Users, BookOpen, Pencil, Trash2 } from 'lucide-react'
 
@@ -23,7 +23,7 @@ export const ClassManagement: React.FC = () => {
   const [classSearch, setClassSearch] = useState('')
 
   const [formSubjectId, setFormSubjectId] = useState<string>(subjects[0]?.id || '')
-  const [formSection, setFormSection] = useState('')
+  const [formSection, setFormSection] = useState('CIT A')
   const [formInstructorId, setFormInstructorId] = useState<string>(instructors[0]?.id || '')
   const [formRoom, setFormRoom] = useState('')
   const [formSchedule, setFormSchedule] = useState('')
@@ -34,7 +34,7 @@ export const ClassManagement: React.FC = () => {
   function handleOpenCreateModal() {
     setEditingClassId(null)
     setFormSubjectId(subjects[0]?.id || '')
-    setFormSection('')
+    setFormSection('CIT A')
     setFormInstructorId(instructors[0]?.id || '')
     setFormRoom('Room 201')
     setFormSchedule('MWF 9:00 AM - 10:30 AM')
@@ -47,7 +47,7 @@ export const ClassManagement: React.FC = () => {
   function handleOpenEditModal(cls: ClassRecord) {
     setEditingClassId(cls.id)
     setFormSubjectId(cls.subject_id || '')
-    setFormSection(cls.section?.name || '')
+    setFormSection(cls.section?.name === 'CIT B' ? 'CIT B' : 'CIT A')
     setFormInstructorId(cls.instructor_id || '')
     setFormRoom(cls.room || '')
     setFormSchedule(cls.schedule || '')
@@ -111,6 +111,7 @@ export const ClassManagement: React.FC = () => {
         if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sectionId)) {
           await dbSections.update(sectionId, {
             name: formSection,
+            course: 'CIT',
             school_year: formSchoolYear,
             semester: formSemester,
           }).catch(() => null)
@@ -126,6 +127,7 @@ export const ClassManagement: React.FC = () => {
           section: {
             id: sectionId,
             name: formSection,
+            course: 'CIT',
             school_year: formSchoolYear,
             semester: formSemester,
             created_at: cls?.section?.created_at || new Date().toISOString(),
@@ -136,6 +138,7 @@ export const ClassManagement: React.FC = () => {
         try {
           const section = await dbSections.create({
             name: formSection,
+            course: 'CIT',
             school_year: formSchoolYear,
             semester: formSemester,
           })
@@ -154,6 +157,7 @@ export const ClassManagement: React.FC = () => {
           section: {
             id: sectionId,
             name: formSection,
+            course: 'CIT',
             school_year: formSchoolYear,
             semester: formSemester,
             created_at: new Date().toISOString(),
@@ -172,7 +176,7 @@ export const ClassManagement: React.FC = () => {
     const subjectTitle = getSubjectTitle(subjects, cls.subject_id)
     const subjectObj = subjects.find((s) => s.id === cls.subject_id)
     const instructorName = instructors.find((i) => i.id === cls.instructor_id)?.name || ''
-    return [subjectTitle, subjectObj?.code || '', cls.room || '', cls.schedule || '', instructorName]
+    return [subjectTitle, subjectObj?.code || '', cls.room || '', cls.schedule || '', cls.section?.name || '', instructorName]
       .join(' ')
       .toLowerCase()
       .includes(classSearch.toLowerCase())
@@ -184,7 +188,7 @@ export const ClassManagement: React.FC = () => {
         <div className="card-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
             <h3>Class Creation & Instructor Assignment</h3>
-            <span className="chip">Assign subjects to instructors, set schedules, & enroll students</span>
+            <span className="chip">Assign subjects to instructors, set schedules, & enroll CIT A / CIT B students</span>
           </div>
           <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
             <input
@@ -222,7 +226,7 @@ export const ClassManagement: React.FC = () => {
                           {subjectObj?.code || 'SUBJECT'}
                         </span>
                         <h4 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.15rem', color: '#0f172a', fontWeight: 700, lineHeight: 1.3 }}>{subjectTitle}</h4>
-                        <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569' }}>Section <strong style={{ color: '#0f172a' }}>{cls.section?.name || 'N/A'}</strong></p>
+                        <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569' }}>Course & Section: <strong style={{ color: '#0f172a' }}>{cls.section?.name || 'CIT A'}</strong></p>
                       </div>
                     </div>
 
@@ -268,7 +272,7 @@ export const ClassManagement: React.FC = () => {
                       type="button"
                       style={{ padding: '0.5rem 0.8rem', cursor: 'pointer', backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.82rem', fontWeight: 600 }}
                       onClick={() => {
-                        if (confirm(`Delete class ${subjectObj?.code} (${cls.section})?`)) {
+                        if (confirm(`Delete class ${subjectObj?.code} (${cls.section?.name || 'CIT A'})?`)) {
                           deleteClass(cls.id)
                         }
                       }}
@@ -355,15 +359,16 @@ export const ClassManagement: React.FC = () => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Section Name *</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. BSIT 2A"
+                  <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>Course & Section *</label>
+                  <select
                     value={formSection}
                     onChange={(e) => setFormSection(e.target.value)}
                     required
-                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
-                  />
+                    style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 700 }}
+                  >
+                    <option value="CIT A">CIT A</option>
+                    <option value="CIT B">CIT B</option>
+                  </select>
                 </div>
               </div>
 
@@ -443,7 +448,7 @@ export const ClassManagement: React.FC = () => {
                           onChange={() => handleToggleStudent(st.id)}
                         />
                         <span>
-                          <strong>{st.name}</strong> ({st.student_no || st.studentNo}) - {st.course} {st.section_label}
+                          <strong>{st.name}</strong> ({st.student_no || st.studentNo}) — <strong>{formatCourseSection(st.course, st.section_label)}</strong>
                         </span>
                       </label>
                     ))

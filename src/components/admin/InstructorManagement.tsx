@@ -396,7 +396,7 @@ export const InstructorManagement: React.FC = () => {
                           {cls.subject?.title || 'Subject'}
                         </strong>
                         <small style={{ color: '#475569', fontSize: '0.85rem' }}>
-                          Section: {cls.section?.name || 'BSIT'} • {cls.schedule || 'MWF'} • {cls.room || 'Room'}
+                          Section: {cls.section?.name || 'CIT A'} • {cls.schedule || 'MWF'} • {cls.room || 'Room'}
                         </small>
                       </div>
                       <span className="chip" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', fontWeight: 600 }}>

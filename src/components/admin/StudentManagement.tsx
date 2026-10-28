@@ -1,13 +1,13 @@
 import React, { useState } from 'react'
 import { Eye, EyeOff, Search, Plus, User, FileText, X, BookOpen, Check } from 'lucide-react'
-import { useData } from '../../context/DataContext'
-import { blankStudent } from '../../context/DataContext'
-import type { Student } from '../../utils/types'
-import { getSubjectTitle } from '../../utils/helpers'
+import { useData, blankStudent } from '../../context/DataContext'
+import type { Student, GradingPeriodKey } from '../../utils/types'
+import { getSubjectTitle, formatCourseSection, normalizeCourseSection, ensureTermScores } from '../../utils/helpers'
 
 export const StudentManagement: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [selectedStudentForRecord, setSelectedStudentForRecord] = useState<Student | null>(null)
+  const [recordPeriodTab, setRecordPeriodTab] = useState<GradingPeriodKey | 'all'>('all')
   const [enrollingStudent, setEnrollingStudent] = useState<Student | null>(null)
   const [selectedClassIdsForEnroll, setSelectedClassIdsForEnroll] = useState<string[]>([])
   const [isSavingEnrollment, setIsSavingEnrollment] = useState(false)
@@ -86,6 +86,11 @@ export const StudentManagement: React.FC = () => {
       )
     : []
 
+  const selectedCourseSectionValue = formatCourseSection(
+    studentForm.course,
+    studentForm.section_label,
+  )
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem' }}>
       <section className="split-grid">
@@ -115,7 +120,7 @@ export const StudentManagement: React.FC = () => {
                 Student Name *
               </label>
               <input
-                placeholder="e.g. Kissy S. / Liam"
+                placeholder="e.g. Kissy Salazar / Liam Reyes"
                 value={studentForm.name || ''}
                 onChange={(event) => setStudentForm({ ...studentForm, name: event.target.value })}
                 required
@@ -142,7 +147,7 @@ export const StudentManagement: React.FC = () => {
                   Year Level *
                 </label>
                 <select
-                  value={studentForm.year_level || 4}
+                  value={studentForm.year_level || 1}
                   onChange={(event) => setStudentForm({ ...studentForm, year_level: Number(event.target.value) })}
                 >
                   <option value={1}>1st Year</option>
@@ -156,12 +161,20 @@ export const StudentManagement: React.FC = () => {
                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.2rem' }}>
                   Course & Section *
                 </label>
-                <input
-                  placeholder="e.g. BSIT-4A"
-                  value={studentForm.section_label || 'BSIT-4A'}
-                  onChange={(event) => setStudentForm({ ...studentForm, section_label: event.target.value })}
-                  required
-                />
+                <select
+                  value={selectedCourseSectionValue}
+                  onChange={(event) => {
+                    const norm = normalizeCourseSection('CIT', event.target.value)
+                    setStudentForm({
+                      ...studentForm,
+                      course: norm.course,
+                      section_label: norm.section_label,
+                    })
+                  }}
+                >
+                  <option value="CIT A">CIT A</option>
+                  <option value="CIT B">CIT B</option>
+                </select>
               </div>
             </div>
 
@@ -238,7 +251,7 @@ export const StudentManagement: React.FC = () => {
             </div>
             <div style={{ position: 'relative', width: '260px' }}>
               <input
-                placeholder="🔍 Search name, ID, course..."
+                placeholder="🔍 Search name, ID, CIT A / B..."
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
                 style={{ width: '100%', paddingLeft: '2.2rem' }}
@@ -277,6 +290,10 @@ export const StudentManagement: React.FC = () => {
                         : student.year_level === 3
                         ? '3rd Year'
                         : '4th Year'
+                    const courseSectionDisplay = formatCourseSection(
+                      student.course,
+                      student.section_label,
+                    )
 
                     const studentEnrolledClasses = classes.filter((c) => (c.studentIds || []).includes(student.id))
                     const enrolledCount = studentEnrolledClasses.length
@@ -293,9 +310,7 @@ export const StudentManagement: React.FC = () => {
                           </span>
                         </td>
                         <td>
-                          <strong style={{ color: '#60a5fa' }}>
-                            {student.course} {student.section_label || '4A'}
-                          </strong>
+                          <strong style={{ color: '#2563eb' }}>{courseSectionDisplay}</strong>
                         </td>
                         <td>
                           <button
@@ -354,7 +369,10 @@ export const StudentManagement: React.FC = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => setSelectedStudentForRecord(student)}
+                              onClick={() => {
+                                setRecordPeriodTab('all')
+                                setSelectedStudentForRecord(student)
+                              }}
                               style={{
                                 background: 'rgba(59,130,246,0.15)',
                                 color: '#60a5fa',
@@ -370,10 +388,16 @@ export const StudentManagement: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => {
+                                const norm = normalizeCourseSection(
+                                  student.course,
+                                  student.section_label,
+                                )
                                 setEditingStudentId(student.id)
                                 setStudentForm({
                                   ...blankStudent,
                                   ...student,
+                                  course: norm.course,
+                                  section_label: norm.section_label,
                                   studentNo: studentIdDisplay,
                                   student_no: studentIdDisplay,
                                 })
@@ -414,7 +438,7 @@ export const StudentManagement: React.FC = () => {
         </div>
       </section>
 
-      {/* View Records Modal */}
+      {/* View Records Modal with Full Prelim, Midterm, Final Component Breakdown */}
       {selectedStudentForRecord && (
         <div
           style={{
@@ -435,7 +459,7 @@ export const StudentManagement: React.FC = () => {
               background: '#ffffff',
               border: '1px solid #e2e8f0',
               borderRadius: '20px',
-              maxWidth: '750px',
+              maxWidth: '1050px',
               width: '100%',
               padding: '2rem',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -453,8 +477,17 @@ export const StudentManagement: React.FC = () => {
                   {selectedStudentForRecord.name}
                 </h3>
                 <small style={{ color: '#475569', fontSize: '0.88rem' }}>
-                  Student ID: <strong style={{ color: '#0f172a' }}>{selectedStudentForRecord.student_no || selectedStudentForRecord.studentNo}</strong> • Course & Section:{' '}
-                  <strong style={{ color: '#0f172a' }}>{selectedStudentForRecord.course} {selectedStudentForRecord.section_label}</strong>
+                  Student ID:{' '}
+                  <strong style={{ color: '#0f172a' }}>
+                    {selectedStudentForRecord.student_no || selectedStudentForRecord.studentNo}
+                  </strong>{' '}
+                  • Course & Section:{' '}
+                  <strong style={{ color: '#0f172a' }}>
+                    {formatCourseSection(
+                      selectedStudentForRecord.course,
+                      selectedStudentForRecord.section_label,
+                    )}
+                  </strong>
                 </small>
               </div>
               <button
@@ -474,64 +507,143 @@ export const StudentManagement: React.FC = () => {
               </button>
             </div>
 
-            <div style={{ marginTop: '1rem' }}>
-              <h4 style={{ margin: '0 0 0.8rem 0', color: '#0f172a', fontWeight: 700, fontSize: '1.05rem' }}>Enrolled Classes & Term Grades:</h4>
+            {/* Period Filter Tabs */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              {(
+                [
+                  { key: 'all', label: 'All Grading Periods (Full Breakdown)' },
+                  { key: 'prelim', label: 'Preliminary Scores' },
+                  { key: 'midterm', label: 'Midterm Scores' },
+                  { key: 'final', label: 'Final Scores' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setRecordPeriodTab(tab.key)}
+                  style={{
+                    padding: '0.45rem 0.9rem',
+                    borderRadius: '8px',
+                    border: recordPeriodTab === tab.key ? '1.5px solid #2563eb' : '1px solid #cbd5e1',
+                    background: recordPeriodTab === tab.key ? '#eff6ff' : '#f8fafc',
+                    color: recordPeriodTab === tab.key ? '#1d4ed8' : '#475569',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '0.6rem' }}>
               {studentRecords.length === 0 ? (
                 <p style={{ color: '#64748b', fontStyle: 'italic' }}>
                   No grade records encoded yet for this student.
                 </p>
+              ) : recordPeriodTab === 'all' ? (
+                <div style={{ overflowX: 'auto', border: '1px solid #cbd5e1', borderRadius: '12px' }}>
+                  <table style={{ margin: 0, width: '100%', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr>
+                        <th rowSpan={2} style={{ background: '#1e3a8a', color: '#fff' }}>Subject</th>
+                        <th colSpan={6} style={{ background: '#1d4ed8', color: '#fff', textAlign: 'center' }}>Preliminary (30%)</th>
+                        <th colSpan={6} style={{ background: '#047857', color: '#fff', textAlign: 'center' }}>Midterm (30%)</th>
+                        <th colSpan={6} style={{ background: '#6d28d9', color: '#fff', textAlign: 'center' }}>Final (40%)</th>
+                        <th rowSpan={2} style={{ background: '#0f766e', color: '#fff', textAlign: 'center' }}>Overall</th>
+                      </tr>
+                      <tr style={{ background: '#f1f5f9', fontSize: '0.75rem' }}>
+                        <th>Att</th><th>Quiz</th><th>Lab</th><th>Act</th><th>Exam</th><th style={{ color: '#1d4ed8' }}>Prelim</th>
+                        <th>Att</th><th>Quiz</th><th>Lab</th><th>Act</th><th>Exam</th><th style={{ color: '#047857' }}>Midterm</th>
+                        <th>Att</th><th>Quiz</th><th>Lab</th><th>Act</th><th>Exam</th><th style={{ color: '#6d28d9' }}>Final</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {studentRecords.map((item, idx) => {
+                        const hasLab = item.classItem?.subject?.has_laboratory ?? false
+                        const p = ensureTermScores(item.row.prelim, item.computed.preliminary, hasLab)
+                        const m = ensureTermScores(item.row.midterm, item.computed.midterm, hasLab)
+                        const f = ensureTermScores(item.row.final, item.computed.final, hasLab)
+
+                        return (
+                          <tr key={idx}>
+                            <td>
+                              <strong style={{ color: '#0f172a' }}>{item.classItem?.subject?.title || 'Subject'}</strong>
+                              <small style={{ color: '#64748b', display: 'block' }}>{item.classItem?.section?.name}</small>
+                            </td>
+                            {/* Prelim */}
+                            <td style={{ textAlign: 'center' }}>{p.attendance}</td>
+                            <td style={{ textAlign: 'center' }}>{p.quiz}</td>
+                            <td style={{ textAlign: 'center' }}>{hasLab ? p.labActivity : 'N/A'}</td>
+                            <td style={{ textAlign: 'center' }}>{p.activity}</td>
+                            <td style={{ textAlign: 'center' }}>{p.exam}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 800, color: '#1d4ed8', background: '#eff6ff' }}>{p.computedTermGrade.toFixed(1)}</td>
+                            {/* Midterm */}
+                            <td style={{ textAlign: 'center' }}>{m.attendance}</td>
+                            <td style={{ textAlign: 'center' }}>{m.quiz}</td>
+                            <td style={{ textAlign: 'center' }}>{hasLab ? m.labActivity : 'N/A'}</td>
+                            <td style={{ textAlign: 'center' }}>{m.activity}</td>
+                            <td style={{ textAlign: 'center' }}>{m.exam}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 800, color: '#047857', background: '#ecfdf5' }}>{m.computedTermGrade.toFixed(1)}</td>
+                            {/* Final */}
+                            <td style={{ textAlign: 'center' }}>{f.attendance}</td>
+                            <td style={{ textAlign: 'center' }}>{f.quiz}</td>
+                            <td style={{ textAlign: 'center' }}>{hasLab ? f.labActivity : 'N/A'}</td>
+                            <td style={{ textAlign: 'center' }}>{f.activity}</td>
+                            <td style={{ textAlign: 'center' }}>{f.exam}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 800, color: '#6d28d9', background: '#f5f3ff' }}>{f.computedTermGrade.toFixed(1)}</td>
+                            {/* Overall */}
+                            <td style={{ textAlign: 'center', fontWeight: 900, color: '#065f46', background: '#dcfce7' }}>
+                              {item.computed.overall}%
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
                 <div style={{ overflowX: 'auto' }}>
                   <table>
                     <thead>
                       <tr>
                         <th>Subject</th>
-                        <th>Prelim</th>
-                        <th>Midterm</th>
-                        <th>Final</th>
-                        <th>Average</th>
-                        <th>Status</th>
+                        <th style={{ textAlign: 'center' }}>Attendance</th>
+                        <th style={{ textAlign: 'center' }}>Quiz</th>
+                        <th style={{ textAlign: 'center' }}>Lab Activity</th>
+                        <th style={{ textAlign: 'center' }}>Activity</th>
+                        <th style={{ textAlign: 'center' }}>Exam</th>
+                        <th style={{ textAlign: 'center' }}>
+                          {recordPeriodTab === 'prelim' ? 'Prelim' : recordPeriodTab === 'midterm' ? 'Midterm' : 'Final'} Grade
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {studentRecords.map((item, idx) => {
-                        const isFail = item.computed.status === 'Bound to Fail'
-                        const isRisk = item.computed.status === 'At Risk'
-
+                        const hasLab = item.classItem?.subject?.has_laboratory ?? false
+                        const t = ensureTermScores(
+                          item.row[recordPeriodTab],
+                          recordPeriodTab === 'prelim'
+                            ? item.computed.preliminary
+                            : recordPeriodTab === 'midterm'
+                            ? item.computed.midterm
+                            : item.computed.final,
+                          hasLab,
+                        )
                         return (
                           <tr key={idx}>
                             <td>
                               <strong style={{ color: '#0f172a' }}>{item.classItem?.subject?.title || 'Subject'}</strong>
                               <small style={{ color: '#64748b' }}>{item.classItem?.section?.name}</small>
                             </td>
-                            <td style={{ color: '#0f172a' }}>{item.computed.preliminary}%</td>
-                            <td style={{ color: '#0f172a' }}>{item.computed.midterm}%</td>
-                            <td style={{ color: '#0f172a' }}>{item.computed.final}%</td>
-                            <td>
-                              <strong style={{ color: '#2563eb', fontWeight: 800 }}>{item.computed.overall}%</strong>
-                            </td>
-                            <td>
-                              <span
-                                style={{
-                                  padding: '0.25rem 0.65rem',
-                                  borderRadius: '999px',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 700,
-                                  background: isFail
-                                    ? '#fee2e2'
-                                    : isRisk
-                                    ? '#fef3c7'
-                                    : '#dcfce7',
-                                  color: isFail ? '#b91c1c' : isRisk ? '#b45309' : '#15803d',
-                                  border: isFail
-                                    ? '1px solid #fecaca'
-                                    : isRisk
-                                    ? '1px solid #fde68a'
-                                    : '1px solid #bbf7d0',
-                                }}
-                              >
-                                {item.computed.status}
-                              </span>
+                            <td style={{ textAlign: 'center', color: '#0f172a' }}>{t.attendance}</td>
+                            <td style={{ textAlign: 'center', color: '#0f172a' }}>{t.quiz}</td>
+                            <td style={{ textAlign: 'center', color: '#0f172a' }}>{hasLab ? t.labActivity : 'N/A'}</td>
+                            <td style={{ textAlign: 'center', color: '#0f172a' }}>{t.activity}</td>
+                            <td style={{ textAlign: 'center', color: '#0f172a' }}>{t.exam}</td>
+                            <td style={{ textAlign: 'center' }}>
+                              <strong style={{ color: '#2563eb', fontWeight: 800 }}>{t.computedTermGrade.toFixed(1)}%</strong>
                             </td>
                           </tr>
                         )
@@ -584,8 +696,14 @@ export const StudentManagement: React.FC = () => {
                   Enroll {enrollingStudent.name}
                 </h3>
                 <small style={{ color: '#64748b', fontSize: '0.88rem' }}>
-                  Student ID: <strong style={{ color: '#0f172a' }}>{enrollingStudent.student_no || enrollingStudent.studentNo}</strong> • Course:{' '}
-                  <strong style={{ color: '#0f172a' }}>{enrollingStudent.course} {enrollingStudent.section_label}</strong>
+                  Student ID:{' '}
+                  <strong style={{ color: '#0f172a' }}>
+                    {enrollingStudent.student_no || enrollingStudent.studentNo}
+                  </strong>{' '}
+                  • Course & Section:{' '}
+                  <strong style={{ color: '#0f172a' }}>
+                    {formatCourseSection(enrollingStudent.course, enrollingStudent.section_label)}
+                  </strong>
                 </small>
               </div>
               <button
@@ -646,7 +764,7 @@ export const StudentManagement: React.FC = () => {
                             {subjectTitle}
                           </div>
                           <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '0.15rem' }}>
-                            Section: <strong style={{ color: '#334155' }}>{cls.section?.name || 'N/A'}</strong> • Schedule: {cls.schedule || 'TBA'} • Room: {cls.room || 'TBA'}
+                            Section: <strong style={{ color: '#334155' }}>{cls.section?.name || 'CIT A'}</strong> • Schedule: {cls.schedule || 'TBA'} • Room: {cls.room || 'TBA'}
                           </div>
                         </div>
                       </div>

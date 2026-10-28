@@ -315,7 +315,7 @@ export const AdminOverview: React.FC = () => {
                       </td>
                       <td>
                         <strong>{item.classItem?.subject?.title || 'Subject'}</strong>
-                        <small>{item.classItem?.section?.name || 'BSIT'}</small>
+                        <small>{item.classItem?.section?.name || 'CIT A'}</small>
                       </td>
                       <td>{instructorName}</td>
                       <td>

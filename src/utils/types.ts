@@ -159,6 +159,9 @@ export type GradeRow = {
   attendance?: number
   participation?: number
   labExam?: number
+  prelim?: DetailedTermScores
+  midterm?: DetailedTermScores
+  final?: DetailedTermScores
 }
 
 export type Prediction = {
@@ -210,51 +213,57 @@ export type Report = {
   created_at: string
 }
 
+export type GradingPeriodKey = 'prelim' | 'midterm' | 'final'
+export type TermComponentField = 'attendance' | 'quiz' | 'labActivity' | 'activity' | 'exam'
+
 export type DetailedTermScores = {
-  exam: number
+  attendance: number
   quiz: number
-  activities: number
-  attendance?: number
+  labActivity: number | null
+  activity: number
+  exam: number
+  computedTermGrade: number
+  // Legacy compatibility
+  activities?: number
   participation?: number
   labExam?: number | null
-  computedTermGrade: number
 }
 
 export type DetailedGradingSheet = {
   studentId: string
   studentName?: string
   studentNo?: string
-  // Assessment fields matching Grading_Book_Template (1).xlsx
+  prelim: DetailedTermScores
+  midterm: DetailedTermScores
+  final: DetailedTermScores
+  // Legacy flat fields for backward compatibility
   prelimExam?: number
   quiz?: number
   activity?: number
   attendance?: number
   participation?: number
-  labExam?: number | null // null indicates N/A
-  midterm?: any
-  final?: any
-  // Term breakdown objects (for backward compatibility)
-  prelim?: any
-  midtermScore?: any
-  finalScore?: any
+  labExam?: number | null
+  midtermScore?: number
+  finalScore?: number
   average: number
   status: PredictionStatus
 }
 
 export type StudentAssessmentRow = {
-  subjectId: string
-  subjectCode: string
-  subjectTitle: string
+  subjectId?: string
+  code: string
+  title: string
   units: number
   hasLaboratory: boolean
-  prelimExam: number
-  quiz: number
-  activity: number
-  attendance: number
-  participation: number
-  labExam: number | null // null represents N/A
-  midterm: number
-  final: number
+  prelim: DetailedTermScores
+  midterm: DetailedTermScores
+  final: DetailedTermScores
+  prelimExam?: number
+  quiz?: number
+  activity?: number
+  attendance?: number
+  participation?: number
+  labExam?: number | null
   subjectAverage: number
 }
 

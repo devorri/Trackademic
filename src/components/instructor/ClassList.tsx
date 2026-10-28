@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../hooks/useAuth'
-import { getSubjectTitle } from '../../utils/helpers'
+import { getSubjectTitle, ensureTermScores, formatCourseSection } from '../../utils/helpers'
 import { BookOpen, Clock, MapPin, Users, X, Calculator } from 'lucide-react'
 import type { ClassRecord } from '../../utils/types'
 
 export const ClassList: React.FC = () => {
-  const { classes, subjects, students, allComputedRows, setSelectedClassId, setActiveSection } = useData()
+  const { classes, subjects, students, allComputedRows, detailedGradingSheets, setSelectedClassId, setActiveSection } = useData()
   const { activeUser } = useAuth()
 
   const [activeViewingClass, setActiveViewingClass] = useState<ClassRecord | null>(null)
@@ -78,7 +78,7 @@ export const ClassList: React.FC = () => {
             <BookOpen size={22} color="#2563eb" /> Assigned Classes & Schedules
           </h3>
           <p style={{ margin: 0, color: '#475569', fontSize: '0.92rem' }}>
-            View teaching assignments, enrolled student rosters, grades, and class averages
+            View teaching assignments, enrolled CIT A & CIT B student rosters, component grades, and class averages
           </p>
         </div>
       </div>
@@ -116,7 +116,7 @@ export const ClassList: React.FC = () => {
                     borderRadius: '999px',
                   }}
                 >
-                  {cls.section?.name || 'BSIT'}
+                  {cls.section?.name || 'CIT A'}
                 </span>
                 <h4 style={{ margin: '0.7rem 0 0.4rem 0', fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>
                   {subjectTitle}
@@ -214,7 +214,7 @@ export const ClassList: React.FC = () => {
               background: '#ffffff',
               border: '1px solid #cbd5e1',
               borderRadius: '20px',
-              maxWidth: '850px',
+              maxWidth: '980px',
               width: '100%',
               padding: '2rem',
               boxShadow: '0 25px 50px -12px rgba(15, 23, 42, 0.25)',
@@ -240,7 +240,7 @@ export const ClassList: React.FC = () => {
                   Assigned Classes Details
                 </span>
                 <h3 style={{ margin: '0.5rem 0 0.2rem 0', fontSize: '1.6rem', color: '#0f172a', fontWeight: 800 }}>
-                  {getSubjectTitle(subjects, activeViewingClass.subject_id)} – {activeViewingClass.section?.name || 'N/A'}
+                  {getSubjectTitle(subjects, activeViewingClass.subject_id)} – {activeViewingClass.section?.name || 'CIT A'}
                 </h3>
                 <div style={{ display: 'flex', gap: '1rem', color: '#475569', fontSize: '0.9rem', marginTop: '0.3rem', fontWeight: 500 }}>
                   <span>📅 {activeViewingClass.schedule || 'MWF 9:00 AM – 10:30 AM'}</span>
@@ -304,9 +304,14 @@ export const ClassList: React.FC = () => {
             {/* Student List, Grades & Student Performance Table */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
-                <h4 style={{ margin: 0, color: '#0f172a', fontSize: '1.15rem', fontWeight: 800 }}>
-                  Student List, Grades & Performance
-                </h4>
+                <div>
+                  <h4 style={{ margin: 0, color: '#0f172a', fontSize: '1.15rem', fontWeight: 800 }}>
+                    Student List, Term Component Scores & Performance
+                  </h4>
+                  <small style={{ color: '#64748b' }}>
+                    Shows Attendance, Quiz, Lab Activity, Activity, and Exam per period (Prelim • Midterm • Final)
+                  </small>
+                </div>
                 <button
                   type="button"
                   className="btn-primary"
@@ -317,20 +322,20 @@ export const ClassList: React.FC = () => {
                   }}
                   style={{ padding: '0.45rem 0.9rem', fontSize: '0.84rem', fontWeight: 700 }}
                 >
-                  Open in Gradebook
+                  Encode in Gradebook
                 </button>
               </div>
 
               <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
-                <table style={{ margin: 0 }}>
+                <table style={{ margin: 0, fontSize: '0.84rem' }}>
                   <thead>
                     <tr style={{ background: '#f8fafc' }}>
                       <th style={{ color: '#1e293b', fontWeight: 700 }}>Student</th>
-                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Prelim</th>
-                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Midterm</th>
-                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Final</th>
+                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Prelim (Att/Qz/Lab/Act/Ex)</th>
+                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Midterm (Att/Qz/Lab/Act/Ex)</th>
+                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Final (Att/Qz/Lab/Act/Ex)</th>
                       <th style={{ color: '#1e293b', fontWeight: 700 }}>Average</th>
-                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Student Performance</th>
+                      <th style={{ color: '#1e293b', fontWeight: 700 }}>Performance</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -343,15 +348,40 @@ export const ClassList: React.FC = () => {
                     ) : (
                       classRows.map((row, idx) => {
                         const isRisk = row.computed.status === 'Bound to Fail' || row.computed.status === 'At Risk'
+                        const sheet = (detailedGradingSheets[activeViewingClass.id] || []).find(
+                          (gs) => gs.studentId === row.student?.id,
+                        )
+                        const hasLab = sheet?.prelim?.labActivity !== null
+                        const p = ensureTermScores(sheet?.prelim, 82, hasLab)
+                        const m = ensureTermScores(sheet?.midterm, 84, hasLab)
+                        const f = ensureTermScores(sheet?.final, 86, hasLab)
+
                         return (
                           <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td>
                               <strong style={{ color: '#0f172a' }}>{row.student?.name || 'Student'}</strong>
-                              <small style={{ color: '#64748b', display: 'block' }}>{row.student?.student_no || row.student?.studentNo}</small>
+                              <small style={{ color: '#64748b', display: 'block' }}>
+                                {row.student?.student_no || row.student?.studentNo} • {formatCourseSection(row.student?.course, row.student?.section_label)}
+                              </small>
                             </td>
-                            <td style={{ color: '#334155' }}>{row.computed.preliminary}%</td>
-                            <td style={{ color: '#334155' }}>{row.computed.midterm}%</td>
-                            <td style={{ color: '#334155' }}>{row.computed.final}%</td>
+                            <td style={{ color: '#334155' }}>
+                              <strong style={{ color: '#1e40af' }}>{row.computed.preliminary}%</strong>
+                              <small style={{ display: 'block', color: '#64748b', fontSize: '0.74rem' }}>
+                                {p.attendance} / {p.quiz} / {hasLab ? (p.labActivity ?? 'N/A') : 'N/A'} / {p.activity} / {p.exam}
+                              </small>
+                            </td>
+                            <td style={{ color: '#334155' }}>
+                              <strong style={{ color: '#5b21b6' }}>{row.computed.midterm}%</strong>
+                              <small style={{ display: 'block', color: '#64748b', fontSize: '0.74rem' }}>
+                                {m.attendance} / {m.quiz} / {hasLab ? (m.labActivity ?? 'N/A') : 'N/A'} / {m.activity} / {m.exam}
+                              </small>
+                            </td>
+                            <td style={{ color: '#334155' }}>
+                              <strong style={{ color: '#065f46' }}>{row.computed.final}%</strong>
+                              <small style={{ display: 'block', color: '#64748b', fontSize: '0.74rem' }}>
+                                {f.attendance} / {f.quiz} / {hasLab ? (f.labActivity ?? 'N/A') : 'N/A'} / {f.activity} / {f.exam}
+                              </small>
+                            </td>
                             <td>
                               <strong style={{ color: '#1d4ed8', fontSize: '1rem' }}>{row.computed.overall}%</strong>
                             </td>

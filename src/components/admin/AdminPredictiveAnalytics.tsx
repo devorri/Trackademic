@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useData } from '../../context/DataContext'
+import { formatCourseSection } from '../../utils/helpers'
 import { TrendingUp, AlertTriangle, CheckCircle, Award, Search, FileText } from 'lucide-react'
 
 export const AdminPredictiveAnalytics: React.FC = () => {
@@ -12,7 +13,7 @@ export const AdminPredictiveAnalytics: React.FC = () => {
     {
       studentName: 'Student A',
       studentNo: '2026-005',
-      courseSection: 'BSIT-4A',
+      courseSection: 'CIT A',
       currentPerformance: 72,
       prediction: 74,
       status: 'At Risk',
@@ -21,7 +22,7 @@ export const AdminPredictiveAnalytics: React.FC = () => {
     {
       studentName: 'Student B',
       studentNo: '2026-006',
-      courseSection: 'BSIT-4A',
+      courseSection: 'CIT A',
       currentPerformance: 84,
       prediction: 86,
       status: 'On Track',
@@ -30,7 +31,7 @@ export const AdminPredictiveAnalytics: React.FC = () => {
     {
       studentName: 'Student C',
       studentNo: '2026-007',
-      courseSection: 'BSIT-4A',
+      courseSection: 'CIT B',
       currentPerformance: 91,
       prediction: 93,
       status: 'High',
@@ -58,7 +59,7 @@ export const AdminPredictiveAnalytics: React.FC = () => {
     return {
       studentName: st.name || 'Student',
       studentNo: st.student_no || st.studentNo || '2026-001',
-      courseSection: `${st.course || 'BSIT'}-${st.section_label || '4A'}`,
+      courseSection: formatCourseSection(st.course, st.section_label),
       currentPerformance: avgOverall,
       prediction,
       status,

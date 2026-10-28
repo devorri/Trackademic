@@ -1,24 +1,25 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { useData } from '../../context/DataContext'
+import { formatCourseSection, normalizeCourseSection } from '../../utils/helpers'
 import { User, Mail, BookOpen, Key, Edit, Check, Hash, Calendar, GraduationCap } from 'lucide-react'
 
 export const StudentProfile: React.FC = () => {
   const { activeUser, setActiveUser } = useAuth()
   const { students, setStudents } = useData()
 
-  // Find linked student record or default to Liam
-  const studentData = students.find((s) => s.email === activeUser?.email) || students[0]
+  // Find linked student record or default to first student
+  const studentData = students.find((s) => s.email === activeUser?.email || s.name === activeUser?.name) || students[0]
 
   const [isEditing, setIsEditing] = useState(false)
   const [isChangingPass, setIsChangingPass] = useState(false)
 
-  const [name, setName] = useState(activeUser?.name || 'Liam')
+  const [name, setName] = useState(activeUser?.name || studentData?.name || 'Juan Dela Cruz')
   const [studentId, setStudentId] = useState(studentData?.student_no || studentData?.studentNo || '2026-001')
-  const [program, setProgram] = useState(studentData?.course || 'BSIT')
+  const [program, setProgram] = useState('CIT')
   const [year, setYear] = useState('2nd Year')
-  const [section, setSection] = useState(studentData?.section_label || 'BSIT-2A')
-  const [email, setEmail] = useState(activeUser?.email || 'liam@example.com')
+  const [section, setSection] = useState(formatCourseSection(studentData?.course, studentData?.section_label))
+  const [email, setEmail] = useState(activeUser?.email || studentData?.email || 'student@example.com')
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -34,16 +35,28 @@ export const StudentProfile: React.FC = () => {
       })
     }
 
+    const normalized = normalizeCourseSection('CIT', section)
+
     if (studentData) {
       setStudents((current) =>
         current.map((s) =>
           s.id === studentData.id
-            ? { ...s, name, student_no: studentId, studentNo: studentId, course: program, section_label: section, email }
+            ? {
+                ...s,
+                name,
+                student_no: studentId,
+                studentNo: studentId,
+                course: normalized.course,
+                section_label: normalized.section_label,
+                email,
+              }
             : s,
         ),
       )
     }
 
+    setProgram(normalized.course)
+    setSection(formatCourseSection(normalized.course, normalized.section_label))
     setIsEditing(false)
     setNotice('Student profile information successfully saved!')
     setTimeout(() => setNotice(null), 3000)
@@ -134,14 +147,6 @@ export const StudentProfile: React.FC = () => {
           </div>
         </div>
 
-        {/* Profile Attributes Requested by User:
-            Name: Liam
-            Student ID: 2026-001
-            Program: BSIT
-            Year: 2nd Year
-            Section: BSIT-2A
-            Email: liam@example.com
-        */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.8rem' }}>
           <div style={{ background: '#f8fafc', padding: '1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}>
@@ -163,7 +168,7 @@ export const StudentProfile: React.FC = () => {
 
           <div style={{ background: '#f8fafc', padding: '1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}>
-              <GraduationCap size={15} color="#7c3aed" /> Program
+              <GraduationCap size={15} color="#7c3aed" /> Course
             </span>
             <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#7c3aed', marginTop: '0.3rem' }}>
               {program}
@@ -181,7 +186,7 @@ export const StudentProfile: React.FC = () => {
 
           <div style={{ background: '#f8fafc', padding: '1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}>
-              <BookOpen size={15} color="#db2777" /> Section
+              <BookOpen size={15} color="#db2777" /> Course & Section
             </span>
             <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#be185d', marginTop: '0.3rem' }}>
               {section}
@@ -297,28 +302,7 @@ export const StudentProfile: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#334155', fontWeight: 600, marginBottom: '0.35rem' }}>
-                  Program *
-                </label>
-                <input
-                  type="text"
-                  value={program}
-                  onChange={(e) => setProgram(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.9rem',
-                    borderRadius: '10px',
-                    background: '#ffffff',
-                    color: '#0f172a',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.9rem',
-                  }}
-                />
-              </div>
-
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: '#334155', fontWeight: 600, marginBottom: '0.35rem' }}>
                   Year *
@@ -342,13 +326,11 @@ export const StudentProfile: React.FC = () => {
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: '#334155', fontWeight: 600, marginBottom: '0.35rem' }}>
-                  Section *
+                  Course & Section *
                 </label>
-                <input
-                  type="text"
-                  value={section}
-                  onChange={(e) => setSection(e.target.value)}
-                  required
+                <select
+                  value={section === 'CIT B' ? 'CIT B' : 'CIT A'}
+                  onChange={(e) => setSection(e.target.value as 'CIT A' | 'CIT B')}
                   style={{
                     width: '100%',
                     padding: '0.65rem 0.9rem',
@@ -357,8 +339,12 @@ export const StudentProfile: React.FC = () => {
                     color: '#0f172a',
                     border: '1.5px solid #cbd5e1',
                     fontSize: '0.9rem',
+                    fontWeight: 700,
                   }}
-                />
+                >
+                  <option value="CIT A">CIT A</option>
+                  <option value="CIT B">CIT B</option>
+                </select>
               </div>
             </div>
 
