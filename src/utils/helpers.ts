@@ -26,33 +26,44 @@ export function normalizeCourseSection(
     return { course: '', section_label: '', display: 'Unassigned' }
   }
 
-  if (rawCourse && rawSec) {
-    const upperC = rawCourse.toUpperCase()
-    const upperS = rawSec.toUpperCase()
-    if (upperC === upperS || upperC.endsWith(` ${upperS}`) || upperC.endsWith(`-${upperS}`)) {
-      const parts = rawCourse.split(/[\s-]+/).filter(Boolean)
-      if (parts.length >= 2) {
-        const sec = parts[parts.length - 1]
-        const crs = parts.slice(0, -1).join(' ')
-        return { course: crs, section_label: sec, display: `${crs} ${sec}` }
-      }
-      return { course: rawCourse, section_label: rawSec, display: rawCourse }
-    }
+  // Clean delimiters (e.g. "CIT-1A" -> "CIT 1A", "BSIT-1A" -> "BSIT 1A")
+  let combined = rawCourse && rawSec ? `${rawCourse} ${rawSec}` : rawCourse || rawSec
+  combined = combined.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+  // Standard program with year & section (e.g. "CIT 1A", "CIT 1B", "BSIT 1A", "BSCS 2B")
+  const stdMatch = combined.match(/^([A-Za-z]+)\s*([1-6])\s*([A-Za-z])$/i)
+  if (stdMatch) {
+    const prog = stdMatch[1].toUpperCase()
+    const yr = stdMatch[2]
+    const sec = stdMatch[3].toUpperCase()
     return {
-      course: rawCourse,
-      section_label: rawSec,
-      display: `${rawCourse} ${rawSec}`.trim(),
+      course: prog,
+      section_label: `${yr}${sec}`,
+      display: `${prog} ${yr}${sec}`,
     }
   }
 
-  const single = (rawCourse || rawSec).trim()
-  const parts = single.split(/[\s-]+/).filter(Boolean)
+  // Program with letter only (e.g. "CIT A" -> course: "CIT", section: "A", display: "CIT A")
+  const progLetterMatch = combined.match(/^([A-Za-z]+)\s*([A-Za-z])$/i)
+  if (progLetterMatch) {
+    const prog = progLetterMatch[1].toUpperCase()
+    const sec = progLetterMatch[2].toUpperCase()
+    return {
+      course: prog,
+      section_label: sec,
+      display: `${prog} ${sec}`,
+    }
+  }
+
+  // Generic multi-word fallback
+  const parts = combined.split(/\s+/).filter(Boolean)
   if (parts.length >= 2) {
-    const sec = parts[parts.length - 1]
-    const crs = parts.slice(0, -1).join(' ')
+    const sec = parts[parts.length - 1].toUpperCase()
+    const crs = parts.slice(0, -1).join(' ').toUpperCase()
     return { course: crs, section_label: sec, display: `${crs} ${sec}` }
   }
-  return { course: single, section_label: '1A', display: single }
+
+  return { course: combined.toUpperCase(), section_label: '1A', display: `${combined.toUpperCase()} 1A` }
 }
 
 export function formatCourseSection(course?: string, sectionLabel?: string): string {

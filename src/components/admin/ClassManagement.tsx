@@ -35,7 +35,7 @@ export const ClassManagement: React.FC = () => {
   const [classSearch, setClassSearch] = useState('');
 
   const [formSubjectId, setFormSubjectId] = useState<string>(subjects[0]?.id || '');
-  const [formSection, setFormSection] = useState('CIT A');
+  const [formSection, setFormSection] = useState('');
   const [formInstructorId, setFormInstructorId] = useState<string>(instructors[0]?.id || '');
   const [formRoom, setFormRoom] = useState('');
   const [formSchedule, setFormSchedule] = useState('');
@@ -44,20 +44,20 @@ export const ClassManagement: React.FC = () => {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [studentModalSearch, setStudentModalSearch] = useState('');
 
-  // Dynamic Course & Section suggestions from sections, classes, and students
+  // Dynamic Course & Section suggestions strictly from database (sections, classes, students) — zero fake defaults
   const courseSectionSuggestions = useMemo(() => {
-    const set = new Set<string>(['CIT A', 'CIT B', 'BSIT 1A', 'BSIT 2A', 'BSIT 3A', 'BSIT 4A']);
+    const set = new Set<string>();
     sections.forEach((sec) => {
       const val = formatCourseSection(sec.course ? `${sec.course} ${sec.name}` : sec.name);
-      if (val) set.add(val);
+      if (val && val !== 'Unassigned') set.add(val);
     });
     classes.forEach((cls) => {
       const val = formatCourseSection(cls.section?.name || cls.section_id || '');
-      if (val) set.add(val);
+      if (val && val !== 'Unassigned') set.add(val);
     });
     students.forEach((stu) => {
       const val = formatCourseSection(stu.course, stu.section_label);
-      if (val) set.add(val);
+      if (val && val !== 'Unassigned') set.add(val);
     });
     return Array.from(set).sort();
   }, [sections, classes, students]);
@@ -83,7 +83,7 @@ export const ClassManagement: React.FC = () => {
 
   function handleOpenCreateModal() {
     setEditingClassId(null);
-    const defaultSec = courseSectionSuggestions[0] || 'CIT A';
+    const defaultSec = courseSectionSuggestions[0] || '';
     setFormSubjectId(subjects[0]?.id || '');
     setFormSection(defaultSec);
     setFormInstructorId(instructors[0]?.id || '');
@@ -93,12 +93,14 @@ export const ClassManagement: React.FC = () => {
     setFormSemester('1st Semester');
     setStudentModalSearch('');
     // Pre-select active students matching defaultSec
-    const matchingIds = activeStudents
-      .filter(
-        (s) =>
-          formatCourseSection(s.course, s.section_label).toLowerCase() === defaultSec.toLowerCase()
-      )
-      .map((s) => s.id);
+    const matchingIds = defaultSec
+      ? activeStudents
+        .filter(
+          (s) =>
+            formatCourseSection(s.course, s.section_label).toLowerCase() === defaultSec.toLowerCase()
+        )
+        .map((s) => s.id)
+      : [];
     setSelectedStudentIds(matchingIds);
     setIsModalOpen(true);
   }
@@ -106,7 +108,7 @@ export const ClassManagement: React.FC = () => {
   function handleOpenEditModal(cls: ClassRecord) {
     setEditingClassId(cls.id);
     setFormSubjectId(cls.subject_id || '');
-    setFormSection(formatCourseSection(cls.section?.name || 'CIT A'));
+    setFormSection(formatCourseSection(cls.section?.name || ''));
     setFormInstructorId(cls.instructor_id || '');
     setFormRoom(cls.room || '');
     setFormSchedule(cls.schedule || '');
@@ -179,7 +181,7 @@ export const ClassManagement: React.FC = () => {
         }
       }
 
-      const coursePrefix = cleanedSection.split(/\s+/)[0] || 'CIT';
+      const coursePrefix = cleanedSection.split(/[\s-]+/)[0] || '';
 
       if (editingClassId) {
         const cls = classes.find((c) => c.id === editingClassId);
@@ -690,7 +692,7 @@ export const ClassManagement: React.FC = () => {
                   <input
                     type="text"
                     list="class-course-sections-datalist"
-                    placeholder="Type or search e.g. BSIT 1A, CIT A, CIT B"
+                    placeholder="Type any Course & Section (e.g. CIT 1A, CIT 1B, BSIT 1A)"
                     value={formSection}
                     onChange={(e) => {
                       const nextSec = e.target.value;
