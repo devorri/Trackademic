@@ -1,223 +1,358 @@
-import React, { useState } from 'react'
-import { useData, blankSubject } from '../../context/DataContext'
-import ClassManagement from './ClassManagement'
-import { FlaskConical, BookOpen } from 'lucide-react'
+import React, { useState } from 'react';
+import { BookOpen, Edit3, Trash2, X, Search, ClipboardList } from 'lucide-react';
+import { useData } from '../../context/DataContext';
+import { ClassManagement } from './ClassManagement';
 
 export const SubjectManagement: React.FC = () => {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterType, setFilterType] = useState<'all' | 'lab' | 'lecture'>('all')
-
   const {
     subjects,
-    setSubjects,
     classes,
     subjectForm,
     setSubjectForm,
     editingSubjectId,
-    setEditingSubjectId,
     handleSaveSubject,
-    createClassFromSubject,
-  } = useData()
+    handleEditSubject,
+    deleteSubject,
+    resetSubjectForm,
+    subjectQuery,
+    setSubjectQuery,
+    filteredSubjects
+  } = useData();
 
-  function handleCancelEdit() {
-    setEditingSubjectId(null)
-    setSubjectForm(blankSubject)
-  }
-
-  const filteredSubjects = subjects.filter((s) => {
-    const matchesSearch = [s.code, s.title, String(s.units)]
-      .join(' ')
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase())
-    if (!matchesSearch) return false
-
-    if (filterType === 'lab') return Boolean(s.has_laboratory)
-    if (filterType === 'lecture') return !s.has_laboratory
-    return true
-  })
+  const [activeTab, setActiveTab] = useState<'classes' | 'subjects'>('classes');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <section className="split-grid">
-        <form className="panel" onSubmit={handleSaveSubject}>
-          <h3>{editingSubjectId ? 'Edit Subject Details' : 'Add New Curriculum Subject'}</h3>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginTop: '0.5rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.2rem' }}>Subject Code *</label>
-              <input
-                placeholder="e.g. ICT 313330"
-                value={subjectForm.code}
-                onChange={(event) => setSubjectForm({ ...subjectForm, code: event.target.value })}
-                required
-              />
-            </div>
+    <section className="content-section">
+      <div className="section-header">
+        <div>
+          <h1>Subjects &amp; Classes</h1>
+          <p className="section-subtitle">
+            Manage curriculum subjects, assign instructors, schedule classes, and enroll students.
+          </p>
+        </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.2rem' }}>Subject Title *</label>
-              <input
-                placeholder="e.g. Apply Object-Oriented Programming Language Skills"
-                value={subjectForm.title}
-                onChange={(event) => setSubjectForm({ ...subjectForm, title: event.target.value })}
-                required
-              />
-            </div>
+        {/* Tab Switcher */}
+        <div
+          style={{
+            display: 'inline-flex',
+            background: '#e2e8f0',
+            padding: '4px',
+            borderRadius: '10px',
+            gap: '4px'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setActiveTab('classes')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '7px',
+              border: 'none',
+              background: activeTab === 'classes' ? '#ffffff' : 'transparent',
+              color: activeTab === 'classes' ? '#1d4ed8' : '#475569',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              boxShadow: activeTab === 'classes' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+            }}
+          >
+            <ClipboardList size={16} />
+            <span>Class &amp; Instructor Assignments ({classes.length})</span>
+          </button>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.2rem' }}>Units *</label>
-              <input
-                type="number"
-                min="1"
-                max="6"
-                placeholder="Units (e.g. 5 for Lab, 3 for Lecture)"
-                value={subjectForm.units}
-                onChange={(event) => setSubjectForm({ ...subjectForm, units: Number(event.target.value) })}
-                required
-              />
-            </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('subjects')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '7px',
+              border: 'none',
+              background: activeTab === 'subjects' ? '#ffffff' : 'transparent',
+              color: activeTab === 'subjects' ? '#1d4ed8' : '#475569',
+              fontWeight: 700,
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              boxShadow: activeTab === 'subjects' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+            }}
+          >
+            <BookOpen size={16} />
+            <span>Curriculum Subjects Catalog ({subjects.length})</span>
+          </button>
+        </div>
+      </div>
 
-            {/* Has Laboratory Checkbox */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.65rem',
-                marginTop: '0.3rem',
-                padding: '0.75rem',
-                background: subjectForm.has_laboratory ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.05)',
-                border: subjectForm.has_laboratory ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '8px',
-                cursor: 'pointer',
-              }}
-              onClick={() => setSubjectForm({ ...subjectForm, has_laboratory: !subjectForm.has_laboratory })}
-            >
-              <input
-                type="checkbox"
-                id="hasLaboratoryCheckbox"
-                checked={Boolean(subjectForm.has_laboratory)}
-                onChange={(e) => setSubjectForm({ ...subjectForm, has_laboratory: e.target.checked })}
-                style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                onClick={(e) => e.stopPropagation()}
-              />
-              <label htmlFor="hasLaboratoryCheckbox" style={{ fontSize: '0.88rem', color: '#f8fafc', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <FlaskConical size={15} color="#60a5fa" /> With Laboratory Component (Includes Laboratory Exam)
-              </label>
-            </div>
-
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <button type="submit" className="btn-primary" style={{ flex: 1 }}>
-                {editingSubjectId ? 'Save Changes' : '+ Add Subject'}
-              </button>
+      {activeTab === 'classes' ? (
+        <ClassManagement />
+      ) : (
+        <>
+          {/* Add / Edit Subject Form */}
+          <article className="panel" style={{ marginBottom: '24px' }}>
+            <div className="panel-header">
+              <div>
+                <h2>{editingSubjectId ? 'Edit Subject' : 'Create New Subject'}</h2>
+                <p>Add a new course offering to the academic catalog.</p>
+              </div>
               {editingSubjectId && (
-                <button type="button" onClick={handleCancelEdit} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}>
-                  Cancel
+                <button
+                  type="button"
+                  className="secondary-btn"
+                  onClick={resetSubjectForm}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    background: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    color: '#334155',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  <X size={15} />
+                  Cancel Edit
                 </button>
               )}
             </div>
-          </div>
-        </form>
 
-        <div className="panel data-card">
-          <div className="card-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.8rem' }}>
-            <div>
-              <h3>Subject Catalog</h3>
-              <span className="chip">{subjects.length} Total Curriculum Subjects</span>
+            <form className="entity-form" onSubmit={handleSaveSubject}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', width: '100%' }}>
+                <div className="form-group">
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
+                    Subject Code *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. CS101, IT202, GE7"
+                    value={subjectForm.code}
+                    onChange={(e) => setSubjectForm((cur) => ({ ...cur, code: e.target.value.toUpperCase() }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '8px',
+                      color: '#0f172a',
+                      fontSize: '0.95rem',
+                      fontWeight: 700
+                    }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
+                    Descriptive Title *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Data Structures and Algorithms"
+                    value={subjectForm.title}
+                    onChange={(e) => setSubjectForm((cur) => ({ ...cur, title: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '8px',
+                      color: '#0f172a',
+                      fontSize: '0.95rem'
+                    }}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: '#475569', fontWeight: 600 }}>
+                    Credit Units *
+                  </label>
+                  <select
+                    value={subjectForm.units}
+                    onChange={(e) => setSubjectForm((cur) => ({ ...cur, units: Number(e.target.value) }))}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      background: '#ffffff',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '8px',
+                      color: '#0f172a',
+                      fontSize: '0.95rem',
+                      fontWeight: 500
+                    }}
+                  >
+                    <option value={1}>1.0 Unit</option>
+                    <option value={2}>2.0 Units</option>
+                    <option value={3}>3.0 Units</option>
+                    <option value={4}>4.0 Units</option>
+                    <option value={5}>5.0 Units</option>
+                    <option value={6}>6.0 Units</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      cursor: 'pointer',
+                      padding: '10px 14px',
+                      background: '#f8fafc',
+                      border: '1.5px solid #cbd5e1',
+                      borderRadius: '8px',
+                      height: '42px',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={Boolean(subjectForm.hasLab)}
+                      onChange={(e) => setSubjectForm((cur) => ({ ...cur, hasLab: e.target.checked }))}
+                      style={{ width: '18px', height: '18px', accentColor: '#2563eb', cursor: 'pointer', flexShrink: 0 }}
+                    />
+                    <span style={{ fontSize: '0.9rem', color: '#0f172a', fontWeight: 600 }}>
+                      With Laboratory Component
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-actions" style={{ marginTop: '16px', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                <button type="submit" className="primary-btn">
+                  <BookOpen size={16} />
+                  <span>{editingSubjectId ? 'Update Subject' : 'Add Subject'}</span>
+                </button>
+              </div>
+            </form>
+          </article>
+
+          {/* Subjects Table */}
+          <article className="panel">
+            <div className="panel-header" style={{ flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <h2>Curriculum Subjects Directory</h2>
+                <p>Showing {filteredSubjects.length} accredited subject(s)</p>
+              </div>
+
+              <div style={{ position: 'relative', minWidth: '240px' }}>
+                <Search
+                  size={16}
+                  style={{
+                    position: 'absolute',
+                    left: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: '#64748b'
+                  }}
+                />
+                <input
+                  type="search"
+                  placeholder="Search code or title..."
+                  value={subjectQuery}
+                  onChange={(e) => setSubjectQuery(e.target.value)}
+                  style={{
+                    paddingLeft: '36px',
+                    width: '100%',
+                    background: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    color: '#0f172a'
+                  }}
+                />
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              {/* Filter Tabs */}
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value as any)}
-                style={{ padding: '0.4rem 0.6rem', fontSize: '0.85rem', borderRadius: '6px' }}
-              >
-                <option value="all">All Subjects ({subjects.length})</option>
-                <option value="lab">With Laboratory ({subjects.filter(s => s.has_laboratory).length})</option>
-                <option value="lecture">Lecture-Only ({subjects.filter(s => !s.has_laboratory).length})</option>
-              </select>
-              <input
-                placeholder="🔍 Search..."
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                style={{ maxWidth: '160px' }}
-              />
-            </div>
-          </div>
-          <table>
-            <thead>
-              <tr>
-                <th>Subject Code & Title</th>
-                <th>Units & Type</th>
-                <th>Active Classes</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSubjects.length === 0 ? (
-                <tr>
-                  <td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: '1.5rem' }}>
-                    {subjects.length === 0 ? 'No subjects in curriculum yet.' : `No subjects match "${searchTerm}"`}
-                  </td>
-                </tr>
-              ) : (
-                filteredSubjects.map((subject) => (
-                  <tr key={subject.id}>
-                    <td>
-                      <strong style={{ color: '#ffffff', display: 'block' }}>{subject.code}</strong>
-                      <small style={{ color: '#94a3b8' }}>{subject.title}</small>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                        <span className="chip">{subject.units} Units</span>
-                        {subject.has_laboratory ? (
-                          <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: 800, background: 'rgba(59, 130, 246, 0.2)', padding: '0.15rem 0.45rem', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                            <FlaskConical size={11} /> With Lab
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontWeight: 600, background: 'rgba(255, 255, 255, 0.05)', padding: '0.15rem 0.45rem', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                            <BookOpen size={11} /> Lecture
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td>{classes.filter((classItem) => classItem.subject_id === subject.id).length} Active Class(es)</td>
-                    <td>
-                      <div className="table-actions">
-                        <button type="button" onClick={() => createClassFromSubject(subject)}>
-                          + Quick Class
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingSubjectId(subject.id)
-                            setSubjectForm(subject)
-                          }}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171' }}
-                          onClick={() => {
-                            if (confirm(`Delete subject "${subject.code}" (${subject.title})?`)) {
-                              setSubjects((current) => current.filter((item) => item.id !== subject.id))
-                            }
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
+
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Subject Code</th>
+                    <th>Descriptive Title</th>
+                    <th>Units</th>
+                    <th>Components</th>
+                    <th>Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </thead>
+                <tbody>
+                  {filteredSubjects.map((subject) => {
+                    const isLab =
+                      Boolean(subject.has_laboratory ?? subject.hasLab) ||
+                      subject.title.toLowerCase().includes('lab') ||
+                      subject.code.toLowerCase().includes('it') ||
+                      subject.code.toLowerCase().includes('cs');
+                    return (
+                      <tr key={subject.id}>
+                        <td>
+                          <strong style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 700 }}>
+                            {subject.code}
+                          </strong>
+                        </td>
+                        <td>
+                          <span style={{ color: '#1e293b', fontWeight: 600, fontSize: '0.92rem' }}>
+                            {subject.title}
+                          </span>
+                        </td>
+                        <td style={{ color: '#334155', fontWeight: 600 }}>{subject.units}.0</td>
+                        <td>
+                          <span
+                            style={{
+                              padding: '4px 10px',
+                              borderRadius: '999px',
+                              fontSize: '0.76rem',
+                              fontWeight: 700,
+                              background: isLab ? '#eff6ff' : '#f0fdf4',
+                              color: isLab ? '#1d4ed8' : '#15803d',
+                              border: isLab ? '1px solid #bfdbfe' : '1px solid #bbf7d0'
+                            }}
+                          >
+                            {isLab ? 'Lecture + Lab' : 'Lecture Only'}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="row-actions">
+                            <button
+                              type="button"
+                              className="ghost-btn"
+                              onClick={() => handleEditSubject(subject)}
+                            >
+                              <Edit3 size={14} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="danger-btn"
+                              onClick={() => deleteSubject(subject.id)}
+                            >
+                              <Trash2 size={14} />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredSubjects.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="empty-cell">
+                        No subjects match your current search.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </>
+      )}
+    </section>
+  );
+};
 
-      {/* Class Creation & Instructor Assignment Section */}
-      <ClassManagement />
-    </div>
-  )
-}
-export default SubjectManagement
+export default SubjectManagement;

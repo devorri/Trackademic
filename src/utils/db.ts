@@ -10,7 +10,11 @@ import type {
   GradeSummary,
   Report,
   Instructor,
+  Prediction,
 } from './types'
+
+const isUuid = (val?: string | null): boolean =>
+  Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
 
 // ============================================
 // PROFILES (Users)
@@ -18,9 +22,15 @@ import type {
 
 export const dbProfiles = {
   async getAll() {
-    const { data, error } = await supabase.from('profiles').select('*')
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('created_at', { ascending: false })
     if (error) throw error
-    return data as Profile[]
+    return (data ?? []).map((p: any) => ({
+      ...p,
+      status: p.avatar_url === 'DROPPED' ? 'dropped' : p.status,
+    })) as Profile[]
   },
 
   async getById(id: string) {
@@ -30,7 +40,10 @@ export const dbProfiles = {
       .eq('id', id)
       .single()
     if (error) throw error
-    return data as Profile
+    return {
+      ...data,
+      status: data.avatar_url === 'DROPPED' ? 'dropped' : data.status,
+    } as Profile
   },
 
   async getByEmail(email: string) {
@@ -40,19 +53,28 @@ export const dbProfiles = {
       .eq('email', email)
       .single()
     if (error) throw error
-    return data as Profile
+    return {
+      ...data,
+      status: data.avatar_url === 'DROPPED' ? 'dropped' : data.status,
+    } as Profile
   },
 
   async create(profile: Omit<Profile, 'id' | 'created_at' | 'updated_at'>) {
+    const isDropped = profile.status === 'dropped'
+    const dbStatus = isDropped ? 'inactive' : profile.status === 'inactive' ? 'inactive' : 'active'
     const payload: Record<string, any> = {
       email: profile.email,
       password_plain: profile.password_plain || 'password123',
       first_name: profile.first_name || profile.name?.split(' ')[0] || 'User',
       last_name: profile.last_name ?? (profile.name?.split(' ').slice(1).join(' ') || ''),
       role: profile.role || 'student',
-      status: profile.status || 'active',
+      status: dbStatus,
     }
-    if (profile.avatar_url) payload.avatar_url = profile.avatar_url
+    if (isDropped) {
+      payload.avatar_url = 'DROPPED'
+    } else if (profile.avatar_url) {
+      payload.avatar_url = profile.avatar_url
+    }
 
     const { data, error } = await supabase
       .from('profiles')
@@ -60,7 +82,10 @@ export const dbProfiles = {
       .select()
       .single()
     if (error) throw error
-    return data as Profile
+    return {
+      ...data,
+      status: data.avatar_url === 'DROPPED' ? 'dropped' : data.status,
+    } as Profile
   },
 
   async update(id: string, updates: Partial<Omit<Profile, 'id' | 'created_at'>>) {
@@ -69,6 +94,13 @@ export const dbProfiles = {
       ...validUpdates,
       updated_at: new Date().toISOString(),
     }
+    if (payload.status === 'dropped') {
+      payload.status = 'inactive'
+      payload.avatar_url = 'DROPPED'
+    } else if (payload.status === 'active' && updates.avatar_url === undefined) {
+      payload.avatar_url = null
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .update(payload)
@@ -76,7 +108,10 @@ export const dbProfiles = {
       .select()
       .single()
     if (error) throw error
-    return data as Profile
+    return {
+      ...data,
+      status: data.avatar_url === 'DROPPED' ? 'dropped' : data.status,
+    } as Profile
   },
 
   async delete(id: string) {
@@ -94,6 +129,7 @@ export const dbInstructors = {
     const { data, error } = await supabase
       .from('instructors')
       .select('*, profiles(*)')
+      .order('created_at', { ascending: false })
     if (error) throw error
     return data as (Instructor & { profiles: Profile })[]
   },
@@ -154,6 +190,7 @@ export const dbStudents = {
     const { data, error } = await supabase
       .from('students')
       .select('*, profiles(*)')
+      .order('created_at', { ascending: false })
     if (error) throw error
     return data as (Student & { profiles: Profile })[]
   },
@@ -172,9 +209,9 @@ export const dbStudents = {
     const payload = {
       profile_id: student.profile_id,
       student_no: student.student_no,
-      course: student.course || 'CIT',
+      course: student.course || 'BSIT',
       year_level: student.year_level || 1,
-      section_label: student.section_label || 'A',
+      section_label: student.section_label || '1A',
     }
     const { data, error } = await supabase
       .from('students')
@@ -191,10 +228,7 @@ export const dbStudents = {
     if (updates.course !== undefined) cleanUpdates.course = updates.course
     if (updates.year_level !== undefined) cleanUpdates.year_level = updates.year_level
     if (updates.section_label !== undefined) cleanUpdates.section_label = updates.section_label
-    if (
-      updates.profile_id &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updates.profile_id)
-    ) {
+    if (isUuid(updates.profile_id)) {
       cleanUpdates.profile_id = updates.profile_id
     }
 
@@ -209,6 +243,10 @@ export const dbStudents = {
   },
 
   async delete(id: string) {
+    await supabase.from('class_students').delete().eq('student_id', id)
+    await supabase.from('grades').delete().eq('student_id', id)
+    await supabase.from('grade_summaries').delete().eq('student_id', id)
+    await supabase.from('predictions').delete().eq('student_id', id)
     const { error } = await supabase.from('students').delete().eq('id', id)
     if (error) throw error
   },
@@ -229,7 +267,10 @@ export const dbStudents = {
 
 export const dbSubjects = {
   async getAll() {
-    const { data, error } = await supabase.from('subjects').select('*')
+    const { data, error } = await supabase
+      .from('subjects')
+      .select('*')
+      .order('created_at', { ascending: false })
     if (error) throw error
     return data as Subject[]
   },
@@ -246,9 +287,9 @@ export const dbSubjects = {
 
   async create(subject: Omit<Subject, 'id' | 'created_at'>) {
     const payload = {
-      code: subject.code,
-      title: subject.title,
-      units: subject.units,
+      code: subject.code.trim(),
+      title: subject.title.trim(),
+      units: Number(subject.units) || 3,
     }
     const { data, error } = await supabase
       .from('subjects')
@@ -261,9 +302,9 @@ export const dbSubjects = {
 
   async update(id: string, updates: Partial<Omit<Subject, 'id' | 'created_at'>>) {
     const payload: Record<string, any> = {}
-    if (updates.code !== undefined) payload.code = updates.code
-    if (updates.title !== undefined) payload.title = updates.title
-    if (updates.units !== undefined) payload.units = updates.units
+    if (updates.code !== undefined) payload.code = updates.code.trim()
+    if (updates.title !== undefined) payload.title = updates.title.trim()
+    if (updates.units !== undefined) payload.units = Number(updates.units) || 3
 
     const { data, error } = await supabase
       .from('subjects')
@@ -287,7 +328,10 @@ export const dbSubjects = {
 
 export const dbSections = {
   async getAll() {
-    const { data, error } = await supabase.from('sections').select('*')
+    const { data, error } = await supabase
+      .from('sections')
+      .select('*')
+      .order('created_at', { ascending: false })
     if (error) throw error
     return data as Section[]
   },
@@ -338,6 +382,7 @@ export const dbClasses = {
     const { data, error } = await supabase
       .from('classes')
       .select('*, class_students(student_id), subjects(*), sections(*), instructors(*, profiles(*))')
+      .order('created_at', { ascending: false })
     if (error) throw error
     return (data ?? []).map((classItem: any) => ({
       ...classItem,
@@ -415,9 +460,7 @@ export const dbClasses = {
       .single()
     if (error) throw error
 
-    const uniqueStudentIds = [...new Set(studentIds ?? [])].filter((sid) =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid),
-    )
+    const uniqueStudentIds = [...new Set(studentIds ?? [])].filter((sid) => isUuid(sid))
     if (uniqueStudentIds.length > 0) {
       const classStudents = uniqueStudentIds.map((studentId) => ({
         class_id: data.id,
@@ -460,9 +503,7 @@ export const dbClasses = {
         .eq('class_id', id)
       if (deleteEnrollmentError) console.warn('Delete enrollment error:', deleteEnrollmentError)
 
-      const uniqueStudentIds = [...new Set(_studentIds)].filter((sid) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sid),
-      )
+      const uniqueStudentIds = [...new Set(_studentIds)].filter((sid) => isUuid(sid))
       if (uniqueStudentIds.length > 0) {
         const { error: enrollmentError } = await supabase
           .from('class_students')
@@ -478,6 +519,20 @@ export const dbClasses = {
   },
 
   async delete(id: string) {
+    await supabase.from('class_students').delete().eq('class_id', id)
+    await supabase.from('grade_summaries').delete().eq('class_id', id)
+    await supabase.from('predictions').delete().eq('class_id', id)
+    const { data: comps } = await supabase.from('grade_components').select('id').eq('class_id', id)
+    if (comps && comps.length > 0) {
+      await supabase
+        .from('grades')
+        .delete()
+        .in(
+          'component_id',
+          comps.map((c: any) => c.id),
+        )
+      await supabase.from('grade_components').delete().eq('class_id', id)
+    }
     const { error } = await supabase.from('classes').delete().eq('id', id)
     if (error) throw error
   },
@@ -617,7 +672,6 @@ export const dbGrades = {
     weight: number
     score: number
   }) {
-    // 1. Find or create grade_component
     const { data: existingComp } = await supabase
       .from('grade_components')
       .select('*')
@@ -635,7 +689,7 @@ export const dbGrades = {
             class_id: params.classId,
             name: params.componentName,
             grading_period: params.gradingPeriod,
-            weight: params.weight,
+            weight: Math.max(1, Math.min(100, params.weight || 10)),
             max_score: 100,
           },
         ])
@@ -645,7 +699,6 @@ export const dbGrades = {
       componentId = createdComp.id
     }
 
-    // 2. Find or create grade record
     const { data: existingGrade } = await supabase
       .from('grades')
       .select('*')
@@ -656,7 +709,7 @@ export const dbGrades = {
     if (existingGrade?.id) {
       const { data, error } = await supabase
         .from('grades')
-        .update({ score: params.score, updated_at: new Date().toISOString() })
+        .update({ score: Math.max(0, params.score), updated_at: new Date().toISOString() })
         .eq('id', existingGrade.id)
         .select()
         .single()
@@ -669,7 +722,7 @@ export const dbGrades = {
           {
             component_id: componentId,
             student_id: params.studentId,
-            score: params.score,
+            score: Math.max(0, params.score),
           },
         ])
         .select()
@@ -727,11 +780,11 @@ export const dbGradeSummaries = {
     const payload = {
       class_id: summary.class_id,
       student_id: summary.student_id,
-      preliminary_grade: summary.preliminary_grade,
-      midterm_grade: summary.midterm_grade,
-      final_grade: summary.final_grade,
-      overall_grade: summary.overall_grade,
-      remarks: summary.remarks,
+      preliminary_grade: summary.preliminary_grade ?? null,
+      midterm_grade: summary.midterm_grade ?? null,
+      final_grade: summary.final_grade ?? null,
+      overall_grade: summary.overall_grade ?? null,
+      remarks: summary.remarks ?? null,
       computed_at: new Date().toISOString(),
     }
 
@@ -757,12 +810,248 @@ export const dbGradeSummaries = {
 }
 
 // ============================================
+// PREDICTIONS (Also stores full itemized sheet basis JSONB)
+// ============================================
+
+export const dbPredictions = {
+  async getAll() {
+    const { data, error } = await supabase.from('predictions').select('*')
+    if (error) throw error
+    return data as Prediction[]
+  },
+
+  async upsert(prediction: {
+    class_id: string
+    student_id: string
+    status: string
+    confidence: number
+    basis: Record<string, any>
+    current_grade?: number
+    predicted_grade?: number
+  }) {
+    const { data: existing } = await supabase
+      .from('predictions')
+      .select('id')
+      .eq('class_id', prediction.class_id)
+      .eq('student_id', prediction.student_id)
+      .maybeSingle()
+
+    const payload = {
+      class_id: prediction.class_id,
+      student_id: prediction.student_id,
+      status: prediction.status || 'Pending',
+      confidence: Math.max(0, Math.min(100, prediction.confidence || 0)),
+      basis: prediction.basis || {},
+      current_grade: prediction.current_grade ?? null,
+      predicted_grade: prediction.predicted_grade ?? null,
+      generated_at: new Date().toISOString(),
+    }
+
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('predictions')
+        .update(payload)
+        .eq('id', existing.id)
+        .select()
+        .single()
+      if (error) throw error
+      return data as Prediction
+    } else {
+      const { data, error } = await supabase
+        .from('predictions')
+        .insert([payload])
+        .select()
+        .single()
+      if (error) throw error
+      return data as Prediction
+    }
+  },
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+export const dbNotifications = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (error) throw error
+    return data ?? []
+  },
+
+  async create(notif: {
+    user_id?: string | null
+    role: string
+    title: string
+    message: string
+    category?: string
+  }) {
+    const payload: Record<string, any> = {
+      role: notif.role || 'all',
+      title: notif.title,
+      message: notif.message,
+      category: notif.category || 'system',
+      is_read: false,
+    }
+    if (isUuid(notif.user_id)) {
+      payload.user_id = notif.user_id
+    }
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([payload])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async markRead(id: string) {
+    if (!isUuid(id)) return
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', id)
+    if (error) throw error
+  },
+
+  async delete(id: string) {
+    if (!isUuid(id)) return
+    const { error } = await supabase.from('notifications').delete().eq('id', id)
+    if (error) throw error
+  },
+}
+
+// ============================================
+// ACTIVITY LOGS
+// ============================================
+
+export const dbActivityLogs = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (error) throw error
+    return data ?? []
+  },
+
+  async create(log: {
+    actor_id?: string | null
+    action: string
+    table_name?: string
+    record_id?: string | null
+    metadata?: Record<string, any>
+  }) {
+    const payload: Record<string, any> = {
+      action: log.action,
+      table_name: log.table_name || null,
+      metadata: log.metadata || {},
+    }
+    if (isUuid(log.actor_id)) payload.actor_id = log.actor_id
+    if (isUuid(log.record_id)) payload.record_id = log.record_id
+
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .insert([payload])
+      .select()
+      .single()
+    if (error) throw error
+    return data
+  },
+}
+
+// ============================================
+// SYSTEM SETTINGS
+// ============================================
+
+export const dbSystemSettings = {
+  async get() {
+    const { data, error } = await supabase
+      .from('system_settings')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  },
+
+  async upsert(settings: {
+    school_year: string
+    semester: string
+    passing_grade: number
+    prelim_weight?: number
+    midterm_weight?: number
+    final_weight?: number
+    exam_weight: number
+    quiz_weight: number
+    activity_weight: number
+    email_alerts: boolean
+  }) {
+    const existing = await this.get().catch(() => null)
+    const payload = {
+      school_year: settings.school_year,
+      semester: settings.semester,
+      passing_grade: settings.passing_grade,
+      prelim_weight: settings.prelim_weight ?? 40,
+      midterm_weight: settings.midterm_weight ?? 60,
+      final_weight: settings.final_weight ?? 60,
+      exam_weight: settings.exam_weight,
+      quiz_weight: settings.quiz_weight,
+      activity_weight: settings.activity_weight,
+      email_alerts: settings.email_alerts,
+      updated_at: new Date().toISOString(),
+    }
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .update(payload)
+        .eq('id', existing.id)
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    } else {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .insert([payload])
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    }
+  },
+
+  async save(settings: {
+    school_year: string
+    semester: string
+    passing_grade: number
+    prelim_weight?: number
+    midterm_weight?: number
+    final_weight?: number
+    exam_weight: number
+    quiz_weight: number
+    activity_weight: number
+    email_alerts: boolean
+  }) {
+    return this.upsert(settings)
+  },
+}
+
+// ============================================
 // REPORTS
 // ============================================
 
 export const dbReports = {
   async getAll() {
-    const { data, error } = await supabase.from('reports').select('*')
+    const { data, error } = await supabase
+      .from('reports')
+      .select('*')
+      .order('created_at', { ascending: false })
     if (error) throw error
     return data as Report[]
   },
@@ -786,9 +1075,19 @@ export const dbReports = {
   },
 
   async create(report: Omit<Report, 'id' | 'created_at'>) {
+    const payload: Record<string, any> = {
+      type: report.type,
+      title: report.title,
+      export_format: report.export_format || 'view',
+      file_url: report.file_url || null,
+    }
+    if (isUuid(report.class_id)) payload.class_id = report.class_id
+    if (isUuid(report.student_id)) payload.student_id = report.student_id
+    if (isUuid(report.generated_by)) payload.generated_by = report.generated_by
+
     const { data, error } = await supabase
       .from('reports')
-      .insert([report])
+      .insert([payload])
       .select()
       .single()
     if (error) throw error

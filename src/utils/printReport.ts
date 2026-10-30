@@ -1,34 +1,36 @@
 // Utility for generating official, publication-ready Academic PDF & Print Documents
-// Showing full component scores (Attendance, Quiz, Lab Activity, Activity, Exam) per term (Prelim, Midterm, Final)
+// Showing full component scores (Attendance, Quiz, Activity, Participation, Exam) per term (Prelim, Midterm, Pre-Final, Final)
 
-import type { DetailedTermScores } from './types'
+import type { DetailedTermScores } from './types';
 
 export type PrintStudentRow = {
-  code: string
-  title: string
-  units: number
-  hasLaboratory: boolean
-  prelim?: DetailedTermScores
-  midterm?: DetailedTermScores
-  final?: DetailedTermScores
-  prelimExam?: number
-  quiz?: number
-  activity?: number
-  attendance?: number
-  participation?: number
-  labExam?: number | null
-  subjectAverage: number
-}
+  code: string;
+  title: string;
+  units: number;
+  hasLaboratory: boolean;
+  prelim?: DetailedTermScores;
+  midterm?: DetailedTermScores;
+  prefinal?: DetailedTermScores;
+  final?: DetailedTermScores;
+  prelimExam?: number;
+  quiz?: number;
+  activity?: number;
+  attendance?: number;
+  participation?: number;
+  labExam?: number | null;
+  subjectAverage: number;
+};
 
 export type PrintClassStudentRow = {
-  studentName: string
-  studentNo?: string
-  prelim: DetailedTermScores
-  midterm: DetailedTermScores
-  final: DetailedTermScores
-  average: number
-  status: string
-}
+  studentName: string;
+  studentNo?: string;
+  prelim: DetailedTermScores;
+  midterm: DetailedTermScores;
+  prefinal?: DetailedTermScores;
+  final: DetailedTermScores;
+  average: number;
+  status: string;
+};
 
 const COMMON_PRINT_STYLES = `
   @page {
@@ -147,24 +149,6 @@ const COMMON_PRINT_STYLES = `
   .grading-table tbody tr:nth-child(even) {
     background: #f8fafc;
   }
-  .badge-na {
-    display: inline-block;
-    background: #e2e8f0;
-    color: #64748b;
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-weight: 800;
-    font-size: 8px;
-  }
-  .badge-lab {
-    display: inline-block;
-    background: #dbeafe;
-    color: #1e40af;
-    padding: 1px 4px;
-    border-radius: 3px;
-    font-weight: 800;
-    font-size: 8px;
-  }
   .col-term-grade {
     background: #eff6ff !important;
     font-weight: 800 !important;
@@ -222,233 +206,60 @@ const COMMON_PRINT_STYLES = `
     display: flex;
     justify-content: space-between;
   }
-`
+`;
 
-function formatLabCell(hasLaboratory: boolean, val?: number | null) {
-  if (!hasLaboratory) return '<span class="badge-na">N/A</span>'
-  return val !== null && val !== undefined ? String(val) : '-'
-}
-
-/**
- * Generates and prints the Student Grading Book with Prelim, Midterm, and Final component breakdowns
- */
 export function printStudentGradingBookReport(params: {
-  studentName: string
-  section: string
-  schoolYear: string
-  rows: PrintStudentRow[]
-  overallAverage: number
-  gradesOnly?: boolean
+  studentName: string;
+  section: string;
+  schoolYear: string;
+  rows: PrintStudentRow[];
+  overallAverage: number;
+  gradesOnly?: boolean;
 }) {
-  const printable = window.open('', '_blank')
-  if (!printable) return
+  const printable = window.open('', '_blank');
+  if (!printable) return;
 
   const dateStr = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric',
-  })
+    day: 'numeric'
+  });
 
-  if (params.gradesOnly) {
-    const getGpa = (score: number) => {
-      if (score >= 96) return '1.00'
-      if (score >= 91.5) return '1.25'
-      if (score >= 87) return '1.50'
-      if (score >= 82.5) return '1.75'
-      if (score >= 78) return '2.00'
-      if (score >= 73.5) return '2.25'
-      if (score >= 70) return '2.50'
-      if (score >= 65) return '2.75'
-      if (score >= 60) return '3.00'
-      return '5.00'
-    }
+  const roundedOverallAvg = Math.round(params.overallAverage || 0);
 
-    const summaryRowsHtml = params.rows
-      .map((r) => {
-        const pGrade = r.prelim?.computedTermGrade ?? r.subjectAverage
-        const mGrade = r.midterm?.computedTermGrade ?? r.subjectAverage
-        const fGrade = r.final?.computedTermGrade ?? r.subjectAverage
-        const passed = r.subjectAverage >= 75
-        return `
+  const summaryRowsHtml = params.rows
+    .map((r) => {
+      const pGrade = r.prelim && r.prelim.termGrade > 0 ? `${Math.round(r.prelim.termGrade)}%` : '—';
+      const mGrade = r.midterm && r.midterm.termGrade > 0 ? `${Math.round(r.midterm.termGrade)}%` : '—';
+      const pfGrade = r.prefinal && r.prefinal.termGrade > 0 ? `${Math.round(r.prefinal.termGrade)}%` : '—';
+      const fGrade = r.final && r.final.termGrade > 0 ? `${Math.round(r.final.termGrade)}%` : '—';
+      const avg = r.subjectAverage > 0 ? Math.round(r.subjectAverage) : null;
+      const passed = avg !== null && avg >= 75;
+      return `
         <tr>
           <td style="font-weight: 800; color: #1e3a8a;">${r.code}</td>
-          <td class="col-subject">
-            ${r.title}
-          </td>
+          <td class="col-subject">${r.title}</td>
           <td style="font-weight: 700;">${r.units}</td>
-          <td class="col-term-grade">${pGrade.toFixed(1)}%</td>
-          <td class="col-term-grade">${mGrade.toFixed(1)}%</td>
-          <td class="col-term-grade">${fGrade.toFixed(1)}%</td>
-          <td class="col-avg">${r.subjectAverage.toFixed(1)}%</td>
-          <td style="font-weight: 800; color: #0f172a;">${getGpa(r.subjectAverage)}</td>
-          <td style="font-weight: 800; color: ${passed ? '#15803d' : '#b91c1c'};">
-            ${passed ? 'PASSED' : 'AT RISK'}
+          <td class="col-term-grade">${pGrade}</td>
+          <td class="col-term-grade">${mGrade}</td>
+          <td class="col-term-grade">${pfGrade}</td>
+          <td class="col-term-grade">${fGrade}</td>
+          <td class="col-avg">${avg !== null ? `${avg}%` : '—'}</td>
+          <td style="font-weight: 800; color: ${
+            avg === null ? '#64748b' : passed ? '#15803d' : '#b91c1c'
+          };">
+            ${avg === null ? 'PENDING' : passed ? 'PASSED' : 'AT RISK'}
           </td>
         </tr>
-      `
-      })
-      .join('')
-
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Official Report of Grades - ${params.studentName}</title>
-          <style>${COMMON_PRINT_STYLES}</style>
-        </head>
-        <body>
-          <div class="report-container">
-            <table class="header-table">
-              <tr>
-                <td style="vertical-align: middle;">
-                  <div class="institution-name">TRACKADEMIC UNIVERSITY SYSTEM</div>
-                  <div class="document-title">OFFICIAL STUDENT REPORT OF GRADES (PRELIM • MIDTERM • FINAL)</div>
-                  <div class="document-subtitle">Summary of Term Grades, Subject Averages & Academic Standing</div>
-                </td>
-                <td style="text-align: right; vertical-align: middle;">
-                  <div style="font-size: 9.5px; color: #64748b; font-weight: 700;">STUDENT COPY</div>
-                  <div style="font-size: 9.5px; color: #0f172a; font-weight: 800;">Date: ${dateStr}</div>
-                </td>
-              </tr>
-            </table>
-
-            <div class="meta-grid">
-              <div class="meta-cell" style="width: 45%;">
-                <div class="meta-label">Student Name</div>
-                <div class="meta-value" style="color: #1e3a8a; font-size: 13px;">${params.studentName}</div>
-              </div>
-              <div class="meta-cell" style="width: 25%;">
-                <div class="meta-label">Course & Section</div>
-                <div class="meta-value">${params.section}</div>
-              </div>
-              <div class="meta-cell" style="width: 30%;">
-                <div class="meta-label">Academic Period</div>
-                <div class="meta-value">${params.schoolYear}</div>
-              </div>
-            </div>
-
-            <table class="grading-table">
-              <thead>
-                <tr>
-                  <th style="width: 11%;">Subject Code</th>
-                  <th class="col-subject" style="width: 31%;">Subject Description</th>
-                  <th style="width: 7%;">Units</th>
-                  <th style="width: 11%; background: #1d4ed8;">Prelim Grade (30%)</th>
-                  <th style="width: 11%; background: #5b21b6;">Midterm Grade (30%)</th>
-                  <th style="width: 11%; background: #047857;">Final Grade (40%)</th>
-                  <th style="width: 10%; background: #0f766e;">Subject Average</th>
-                  <th style="width: 8%;">GPA</th>
-                  <th style="width: 10%;">Remarks</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${summaryRowsHtml}
-                <tr class="overall-row">
-                  <td colspan="6" style="text-align: right; font-weight: 900; letter-spacing: 0.05em; padding-right: 12px;">
-                    OVERALL ACADEMIC AVERAGE:
-                  </td>
-                  <td class="col-avg" style="font-size: 12px !important; color: #065f46; font-weight: 900;">
-                    ${params.overallAverage.toFixed(1)}%
-                  </td>
-                  <td style="font-weight: 900; color: #0f172a;">
-                    ${getGpa(params.overallAverage)}
-                  </td>
-                  <td style="font-weight: 900; color: ${params.overallAverage >= 75 ? '#15803d' : '#b91c1c'};">
-                    ${params.overallAverage >= 75 ? 'PASSED' : 'AT RISK'}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div class="signatures">
-              <div class="sig-col">
-                <div class="sig-line">CLASS ADVISER / TRAINER</div>
-                <div class="sig-title">Faculty In-Charge</div>
-              </div>
-              <div class="sig-col">
-                <div class="sig-line">DEPARTMENT HEAD / DEAN</div>
-                <div class="sig-title">College of Information Technology (CIT)</div>
-              </div>
-              <div class="sig-col">
-                <div class="sig-line">UNIVERSITY REGISTRAR</div>
-                <div class="sig-title">Certified Official Record</div>
-              </div>
-            </div>
-
-            <div class="footer-note">
-              <span>Trackademic Academic Information & Grading System — Official Student Grade Report</span>
-              <span>Document ID: TRK-${Math.random().toString(36).substring(2, 9).toUpperCase()}</span>
-            </div>
-          </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
-        </body>
-      </html>
-    `
-
-    printable.document.open()
-    printable.document.write(html)
-    printable.document.close()
-    return
-  }
-
-  const rowsHtml = params.rows
-    .map((r) => {
-      const p = r.prelim || {
-        attendance: r.attendance ?? 88,
-        quiz: r.quiz ?? 84,
-        labActivity: r.hasLaboratory ? (r.labExam ?? 85) : null,
-        activity: r.activity ?? 85,
-        exam: r.prelimExam ?? 82,
-        computedTermGrade: r.subjectAverage,
-      }
-      const m = r.midterm || p
-      const f = r.final || p
-
-      return `
-      <tr>
-        <td style="font-weight: 700; color: #1e3a8a;">${r.code}</td>
-        <td class="col-subject">
-          ${r.title}
-          ${r.hasLaboratory ? '<span class="badge-lab" style="margin-left: 4px;">Lab</span>' : ''}
-        </td>
-        <!-- Prelim -->
-        <td>${p.attendance ?? '-'}</td>
-        <td>${p.quiz ?? '-'}</td>
-        <td>${formatLabCell(r.hasLaboratory, p.labActivity)}</td>
-        <td>${p.activity ?? '-'}</td>
-        <td>${p.exam ?? '-'}</td>
-        <td class="col-term-grade">${p.computedTermGrade.toFixed(1)}</td>
-        <!-- Midterm -->
-        <td>${m.attendance ?? '-'}</td>
-        <td>${m.quiz ?? '-'}</td>
-        <td>${formatLabCell(r.hasLaboratory, m.labActivity)}</td>
-        <td>${m.activity ?? '-'}</td>
-        <td>${m.exam ?? '-'}</td>
-        <td class="col-term-grade">${m.computedTermGrade.toFixed(1)}</td>
-        <!-- Final -->
-        <td>${f.attendance ?? '-'}</td>
-        <td>${f.quiz ?? '-'}</td>
-        <td>${formatLabCell(r.hasLaboratory, f.labActivity)}</td>
-        <td>${f.activity ?? '-'}</td>
-        <td>${f.exam ?? '-'}</td>
-        <td class="col-term-grade">${f.computedTermGrade.toFixed(1)}</td>
-        <!-- Overall -->
-        <td class="col-avg">${r.subjectAverage > 0 ? r.subjectAverage.toFixed(1) : '-'}</td>
-      </tr>
-    `
+      `;
     })
-    .join('')
+    .join('');
 
   const html = `
     <!DOCTYPE html>
     <html>
       <head>
-        <title>Student Grading Book - ${params.studentName}</title>
+        <title>Official Report of Grades - ${params.studentName}</title>
         <style>${COMMON_PRINT_STYLES}</style>
       </head>
       <body>
@@ -457,11 +268,11 @@ export function printStudentGradingBookReport(params: {
             <tr>
               <td style="vertical-align: middle;">
                 <div class="institution-name">TRACKADEMIC UNIVERSITY SYSTEM</div>
-                <div class="document-title">STUDENT GRADING BOOK & OFFICIAL TRANSCRIPT OF ASSESSMENTS (PRELIM • MIDTERM • FINAL)</div>
-                <div class="document-subtitle">Itemized Component Scores (Attendance, Quiz, Lab Activity, Activity, Exam) per Grading Period</div>
+                <div class="document-title">OFFICIAL STUDENT REPORT OF GRADES (PRELIM • MIDTERM • PRE-FINAL • FINAL)</div>
+                <div class="document-subtitle">All Grades Rounded to Whole Numbers | Cumulative Formula: 40% Previous + 60% Current Raw</div>
               </td>
               <td style="text-align: right; vertical-align: middle;">
-                <div style="font-size: 9.5px; color: #64748b; font-weight: 700;">OFFICIAL COPY</div>
+                <div style="font-size: 9.5px; color: #64748b; font-weight: 700;">STUDENT COPY</div>
                 <div style="font-size: 9.5px; color: #0f172a; font-weight: 800;">Date: ${dateStr}</div>
               </td>
             </tr>
@@ -485,45 +296,34 @@ export function printStudentGradingBookReport(params: {
           <table class="grading-table">
             <thead>
               <tr>
-                <th rowspan="2" style="width: 7%;">Code</th>
-                <th rowspan="2" class="col-subject" style="width: 17%;">Subject Name</th>
-                <th colspan="6" style="background: #1d4ed8;">Preliminary Period (30%)</th>
-                <th colspan="6" style="background: #047857;">Midterm Period (30%)</th>
-                <th colspan="6" style="background: #6d28d9;">Final Period (40%)</th>
-                <th rowspan="2" style="width: 6%; background: #0f766e;">Overall Avg</th>
-              </tr>
-              <tr>
-                <!-- Prelim -->
-                <th>Att</th>
-                <th>Quiz</th>
-                <th>Lab</th>
-                <th>Act</th>
-                <th>Exam</th>
-                <th style="background: #1e40af;">Prelim</th>
-                <!-- Midterm -->
-                <th>Att</th>
-                <th>Quiz</th>
-                <th>Lab</th>
-                <th>Act</th>
-                <th>Exam</th>
-                <th style="background: #065f46;">Midterm</th>
-                <!-- Final -->
-                <th>Att</th>
-                <th>Quiz</th>
-                <th>Lab</th>
-                <th>Act</th>
-                <th>Exam</th>
-                <th style="background: #5b21b6;">Final</th>
+                <th style="width: 10%;">Subject Code</th>
+                <th class="col-subject" style="width: 28%;">Subject Description</th>
+                <th style="width: 6%;">Units</th>
+                <th style="width: 11%; background: #1d4ed8;">Prelim</th>
+                <th style="width: 11%; background: #5b21b6;">Midterm</th>
+                <th style="width: 11%; background: #c2410c;">Pre-Final</th>
+                <th style="width: 11%; background: #047857;">Final</th>
+                <th style="width: 11%; background: #0f766e;">Rounded Avg</th>
+                <th style="width: 11%;">Remarks</th>
               </tr>
             </thead>
             <tbody>
-              ${rowsHtml}
+              ${summaryRowsHtml}
               <tr class="overall-row">
-                <td colspan="20" style="text-align: right; font-weight: 900; letter-spacing: 0.05em; padding-right: 12px;">
-                  OVERALL ACADEMIC AVERAGE:
+                <td colspan="7" style="text-align: right; font-weight: 900; letter-spacing: 0.05em; padding-right: 12px;">
+                  ROUNDED GENERAL WEIGHTED AVERAGE (GWA):
                 </td>
                 <td class="col-avg" style="font-size: 12px !important; color: #065f46; font-weight: 900;">
-                  ${params.overallAverage.toFixed(1)}%
+                  ${roundedOverallAvg > 0 ? `${roundedOverallAvg}%` : '—'}
+                </td>
+                <td style="font-weight: 900; color: ${
+                  roundedOverallAvg === 0
+                    ? '#64748b'
+                    : roundedOverallAvg >= 75
+                    ? '#15803d'
+                    : '#b91c1c'
+                };">
+                  ${roundedOverallAvg === 0 ? 'PENDING' : roundedOverallAvg >= 75 ? 'PASSED' : 'AT RISK'}
                 </td>
               </tr>
             </tbody>
@@ -531,12 +331,12 @@ export function printStudentGradingBookReport(params: {
 
           <div class="signatures">
             <div class="sig-col">
-              <div class="sig-line">CLASS ADVISER / TRAINER</div>
+              <div class="sig-line">CLASS ADVISER / INSTRUCTOR</div>
               <div class="sig-title">Faculty In-Charge</div>
             </div>
             <div class="sig-col">
               <div class="sig-line">DEPARTMENT HEAD / DEAN</div>
-              <div class="sig-title">College of Information Technology (CIT)</div>
+              <div class="sig-title">Academic Department</div>
             </div>
             <div class="sig-col">
               <div class="sig-line">UNIVERSITY REGISTRAR</div>
@@ -545,7 +345,7 @@ export function printStudentGradingBookReport(params: {
           </div>
 
           <div class="footer-note">
-            <span>Trackademic Academic Information & Grading System — Confidential Academic Record</span>
+            <span>Trackademic Academic Information & Grading System — Official Student Grade Report</span>
             <span>Document ID: TRK-${Math.random().toString(36).substring(2, 9).toUpperCase()}</span>
           </div>
         </div>
@@ -557,79 +357,71 @@ export function printStudentGradingBookReport(params: {
         </script>
       </body>
     </html>
-  `
+  `;
 
-  printable.document.open()
-  printable.document.write(html)
-  printable.document.close()
+  printable.document.open();
+  printable.document.write(html);
+  printable.document.close();
 }
 
-/**
- * Generates and prints the Official Class Roster Grade Record for Instructors
- */
 export function printClassGradeReport(params: {
-  subjectCode: string
-  subjectTitle: string
-  hasLaboratory: boolean
-  sectionName: string
-  instructorName: string
-  schedule: string
-  room: string
-  schoolYear: string
-  students: PrintClassStudentRow[]
+  subjectCode: string;
+  subjectTitle: string;
+  hasLaboratory: boolean;
+  sectionName: string;
+  instructorName: string;
+  schedule: string;
+  room: string;
+  schoolYear: string;
+  students: PrintClassStudentRow[];
 }) {
-  const printable = window.open('', '_blank')
-  if (!printable) return
+  const printable = window.open('', '_blank');
+  if (!printable) return;
 
   const dateStr = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
-    day: 'numeric',
-  })
+    day: 'numeric'
+  });
 
   const rowsHtml = params.students
-    .map(
-      (s, index) => `
+    .map((s, index) => {
+      const pGrade = s.prelim.termGrade > 0 ? `${Math.round(s.prelim.termGrade)}%` : '—';
+      const mGrade = s.midterm.termGrade > 0 ? `${Math.round(s.midterm.termGrade)}%` : '—';
+      const pfGrade =
+        s.prefinal && s.prefinal.termGrade > 0 ? `${Math.round(s.prefinal.termGrade)}%` : '—';
+      const fGrade = s.final.termGrade > 0 ? `${Math.round(s.final.termGrade)}%` : '—';
+      const avg = s.average > 0 ? `${Math.round(s.average)}%` : '—';
+      return `
       <tr>
         <td style="font-weight: 700;">${index + 1}</td>
         <td class="col-subject" style="font-weight: 700; color: #0f172a;">
           ${s.studentName}
         </td>
-        <!-- Prelim -->
-        <td>${s.prelim.attendance}</td>
-        <td>${s.prelim.quiz}</td>
-        <td>${formatLabCell(params.hasLaboratory, s.prelim.labActivity)}</td>
-        <td>${s.prelim.activity}</td>
-        <td>${s.prelim.exam}</td>
-        <td class="col-term-grade">${s.prelim.computedTermGrade.toFixed(1)}</td>
-        <!-- Midterm -->
-        <td>${s.midterm.attendance}</td>
-        <td>${s.midterm.quiz}</td>
-        <td>${formatLabCell(params.hasLaboratory, s.midterm.labActivity)}</td>
-        <td>${s.midterm.activity}</td>
-        <td>${s.midterm.exam}</td>
-        <td class="col-term-grade">${s.midterm.computedTermGrade.toFixed(1)}</td>
-        <!-- Final -->
-        <td>${s.final.attendance}</td>
-        <td>${s.final.quiz}</td>
-        <td>${formatLabCell(params.hasLaboratory, s.final.labActivity)}</td>
-        <td>${s.final.activity}</td>
-        <td>${s.final.exam}</td>
-        <td class="col-term-grade">${s.final.computedTermGrade.toFixed(1)}</td>
-        <!-- Overall -->
-        <td class="col-avg">${s.average > 0 ? s.average.toFixed(1) : '-'}</td>
-        <td style="font-weight: 800; color: ${s.status === 'Bound to Fail' ? '#b91c1c' : s.status === 'At Risk' ? '#c2410c' : '#15803d'};">
-          ${s.status}
+        <td>${s.studentNo || '—'}</td>
+        <td class="col-term-grade">${pGrade}</td>
+        <td class="col-term-grade">${mGrade}</td>
+        <td class="col-term-grade">${pfGrade}</td>
+        <td class="col-term-grade">${fGrade}</td>
+        <td class="col-avg">${avg}</td>
+        <td style="font-weight: 800; color: ${
+          s.average <= 0 ? '#64748b' : Math.round(s.average) < 75 ? '#b91c1c' : '#15803d'
+        };">
+          ${s.average <= 0 ? 'PENDING' : Math.round(s.average) < 75 ? 'AT RISK' : 'PASSED'}
         </td>
       </tr>
-    `,
-    )
-    .join('')
+    `;
+    })
+    .join('');
 
+  const encodedStudents = params.students.filter((s) => s.average > 0);
   const classAvg =
-    params.students.length > 0
-      ? (params.students.reduce((sum, s) => sum + s.average, 0) / params.students.length).toFixed(1)
-      : '0.0'
+    encodedStudents.length > 0
+      ? Math.round(
+          encodedStudents.reduce((sum, s) => sum + Math.round(s.average), 0) /
+            encodedStudents.length
+        )
+      : 0;
 
   const html = `
     <!DOCTYPE html>
@@ -644,8 +436,8 @@ export function printClassGradeReport(params: {
             <tr>
               <td style="vertical-align: middle;">
                 <div class="institution-name">TRACKADEMIC UNIVERSITY SYSTEM</div>
-                <div class="document-title">OFFICIAL CLASS RECORD & ITEMIZED ASSESSMENT REPORT (PRELIM • MIDTERM • FINAL)</div>
-                <div class="document-subtitle">Office of Academic Affairs • College of Information Technology (CIT)</div>
+                <div class="document-title">OFFICIAL CLASS RECORD (PRELIM • MIDTERM • PRE-FINAL • FINAL)</div>
+                <div class="document-subtitle">All Grades Rounded to Whole Numbers | Cumulative Formula: 40% Previous + 60% Current Raw</div>
               </td>
               <td style="text-align: right; vertical-align: middle;">
                 <div style="font-size: 9.5px; color: #64748b; font-weight: 700;">CLASS RECORD</div>
@@ -656,14 +448,13 @@ export function printClassGradeReport(params: {
 
           <div class="meta-grid">
             <div class="meta-cell" style="width: 35%;">
-              <div class="meta-label">Subject & Classification</div>
+              <div class="meta-label">Subject</div>
               <div class="meta-value" style="color: #1e3a8a;">
                 ${params.subjectCode} — ${params.subjectTitle}
-                ${params.hasLaboratory ? '<span class="badge-lab" style="margin-left: 6px;">With Laboratory</span>' : '<span class="badge-na" style="margin-left: 6px;">Lecture-Only</span>'}
               </div>
             </div>
             <div class="meta-cell" style="width: 25%;">
-              <div class="meta-label">Instructor / Trainer</div>
+              <div class="meta-label">Instructor</div>
               <div class="meta-value">${params.instructorName}</div>
             </div>
             <div class="meta-cell" style="width: 20%;">
@@ -671,7 +462,7 @@ export function printClassGradeReport(params: {
               <div class="meta-value">${params.sectionName} • ${params.room}</div>
             </div>
             <div class="meta-cell" style="width: 20%;">
-              <div class="meta-label">Schedule & Term</div>
+              <div class="meta-label">Schedule</div>
               <div class="meta-value">${params.schedule}</div>
             </div>
           </div>
@@ -679,49 +470,28 @@ export function printClassGradeReport(params: {
           <table class="grading-table">
             <thead>
               <tr>
-                <th rowspan="2" style="width: 3%;">#</th>
-                <th rowspan="2" class="col-subject" style="width: 15%;">Student Name</th>
-                <th colspan="6" style="background: #1d4ed8;">Preliminary Period (30%)</th>
-                <th colspan="6" style="background: #047857;">Midterm Period (30%)</th>
-                <th colspan="6" style="background: #6d28d9;">Final Period (40%)</th>
-                <th rowspan="2" style="width: 6%; background: #0f766e;">Overall</th>
-                <th rowspan="2" style="width: 7%;">Remarks</th>
-              </tr>
-              <tr>
-                <!-- Prelim -->
-                <th>Att</th>
-                <th>Quiz</th>
-                <th>Lab</th>
-                <th>Act</th>
-                <th>Exam</th>
-                <th style="background: #1e40af;">Grade</th>
-                <!-- Midterm -->
-                <th>Att</th>
-                <th>Quiz</th>
-                <th>Lab</th>
-                <th>Act</th>
-                <th>Exam</th>
-                <th style="background: #065f46;">Grade</th>
-                <!-- Final -->
-                <th>Att</th>
-                <th>Quiz</th>
-                <th>Lab</th>
-                <th>Act</th>
-                <th>Exam</th>
-                <th style="background: #5b21b6;">Grade</th>
+                <th style="width: 4%;">#</th>
+                <th class="col-subject" style="width: 26%;">Student Name</th>
+                <th style="width: 12%;">Student No.</th>
+                <th style="width: 11%; background: #1d4ed8;">Prelim</th>
+                <th style="width: 11%; background: #5b21b6;">Midterm</th>
+                <th style="width: 11%; background: #c2410c;">Pre-Final</th>
+                <th style="width: 11%; background: #047857;">Final</th>
+                <th style="width: 7%; background: #0f766e;">Rounded</th>
+                <th style="width: 7%;">Status</th>
               </tr>
             </thead>
             <tbody>
               ${rowsHtml}
               <tr class="overall-row">
-                <td colspan="20" style="text-align: right; font-weight: 900; letter-spacing: 0.05em; padding-right: 12px;">
-                  CLASS BATCH AVERAGE:
+                <td colspan="7" style="text-align: right; font-weight: 900; letter-spacing: 0.05em; padding-right: 12px;">
+                  ROUNDED CLASS AVERAGE:
                 </td>
                 <td class="col-avg" style="font-size: 12px !important; color: #065f46; font-weight: 900;">
-                  ${classAvg}%
+                  ${classAvg > 0 ? `${classAvg}%` : '—'}
                 </td>
                 <td style="font-weight: 900; color: #065f46;">
-                  ${Number(classAvg) >= 75 ? 'PASSED' : 'AT RISK'}
+                  ${classAvg === 0 ? 'PENDING' : classAvg >= 75 ? 'PASSED' : 'AT RISK'}
                 </td>
               </tr>
             </tbody>
@@ -730,10 +500,10 @@ export function printClassGradeReport(params: {
           <div class="signatures">
             <div class="sig-col">
               <div class="sig-line">${params.instructorName.toUpperCase()}</div>
-              <div class="sig-title">Instructor / Trainer</div>
+              <div class="sig-title">Instructor</div>
             </div>
             <div class="sig-col">
-              <div class="sig-line">DEAN OF INFORMATION TECHNOLOGY</div>
+              <div class="sig-line">DEPARTMENT DEAN</div>
               <div class="sig-title">Checked & Endorsed</div>
             </div>
             <div class="sig-col">
@@ -755,9 +525,9 @@ export function printClassGradeReport(params: {
         </script>
       </body>
     </html>
-  `
+  `;
 
-  printable.document.open()
-  printable.document.write(html)
-  printable.document.close()
+  printable.document.open();
+  printable.document.write(html);
+  printable.document.close();
 }

@@ -1,20 +1,24 @@
-import React from 'react'
-import { useAuth } from '../../hooks/useAuth'
-import { useData } from '../../context/DataContext'
-import { roleNavItems } from '../../utils/constants'
-import { LogOut } from 'lucide-react'
+import React from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import { useData } from '../../context/DataContext';
+import { roleNavItems } from '../../utils/constants';
+import { LogOut } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
-  const { activeUser, handleLogout } = useAuth()
-  const { activeSection, setActiveSection, notifications } = useData()
+  const { activeUser, handleLogout } = useAuth();
+  const { activeSection, setActiveSection, notifications } = useData();
 
-  if (!activeUser) return null
+  if (!activeUser) return null;
 
   const unreadCount = notifications.filter(
-    (n) => (n.role === activeUser.role || n.role === 'all') && !n.read,
-  ).length
+    (n) =>
+      (n.role === activeUser.role || n.role === 'all') &&
+      (!n.user_id || n.user_id === activeUser.id) &&
+      !n.read &&
+      !n.is_read
+  ).length;
 
-  const navItems = roleNavItems[activeUser.role] || []
+  const navItems = roleNavItems[activeUser.role] || [];
 
   return (
     <aside className="sidebar">
@@ -31,7 +35,7 @@ export const Sidebar: React.FC = () => {
 
       <nav className="sidebar-nav" aria-label="Dashboard sections">
         {navItems.map((item) => {
-          const isNotif = item.id === 'notifications'
+          const isNotif = item.id === 'notifications';
           return (
             <button
               className={activeSection === item.id ? 'active-nav' : ''}
@@ -54,14 +58,14 @@ export const Sidebar: React.FC = () => {
                     fontSize: '0.7rem',
                     fontWeight: 700,
                     padding: '0.15rem 0.45rem',
-                    lineHeight: 1,
+                    lineHeight: 1
                   }}
                 >
                   {unreadCount}
                 </span>
               )}
             </button>
-          )
+          );
         })}
       </nav>
 
@@ -79,14 +83,14 @@ export const Sidebar: React.FC = () => {
             justifyContent: 'center',
             gap: '0.4rem',
             marginTop: '0.8rem',
-            width: '100%',
+            width: '100%'
           }}
         >
           <LogOut size={15} /> Logout
         </button>
       </div>
     </aside>
-  )
-}
+  );
+};
 
-export default Sidebar
+export default Sidebar;

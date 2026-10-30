@@ -1,6 +1,15 @@
 export type Role = 'administrator' | 'instructor' | 'student'
-export type UserStatus = 'active' | 'inactive'
-export type PredictionStatus = 'Excellent' | 'Good' | 'Average' | 'At Risk' | 'Bound to Fail' | 'On Track' | 'High'
+export type UserStatus = 'active' | 'inactive' | 'dropped'
+export type PredictionStatus =
+  | 'Excellent'
+  | 'Good'
+  | 'Average'
+  | 'At Risk'
+  | 'Bound to Fail'
+  | 'On Track'
+  | 'High'
+  | 'Pending'
+  | 'Dropped'
 export type ReportType =
   | 'Student Performance Report'
   | 'Class Performance Report'
@@ -33,52 +42,60 @@ export type DashboardSection =
   | 'profile'
 
 export type Profile = {
-  id: string;
-  name?: string;
-  email?: string;
-  password_plain?: string;
-  first_name?: string;
-  last_name?: string;
-  role: Role | string;
-  status?: UserStatus;
-  avatar_url?: string;
-  face_embedding?: any;
-  camera_status?: string;
-  created_at: string;
-  updated_at?: string;
-};
+  id: string
+  name?: string
+  email?: string
+  password_plain?: string
+  first_name?: string
+  last_name?: string
+  role: Role | string
+  status?: UserStatus
+  avatar_url?: string
+  face_embedding?: any
+  camera_status?: string
+  created_at: string
+  updated_at?: string
+}
 
 export type User = {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-  status: UserStatus;
-  password?: string;
-};
+  id: string
+  name: string
+  email: string
+  role: Role
+  status: UserStatus
+  password?: string
+  profile_id?: string
+}
 
 export type Instructor = {
-  id: string;
-  profile_id: string;
-  employee_no: string;
-  department?: string;
-  created_at: string;
-};
+  id: string
+  profile_id: string
+  employee_no: string
+  department?: string
+  created_at: string
+  name?: string
+  email?: string
+}
 
 export type Student = {
-  id: string;
-  profile_id: string;
-  student_no: string;
-  course?: string;
-  year_level?: number;
-  section_label?: string;
-  created_at: string;
+  id: string
+  profile_id: string
+  student_no: string
+  course?: string
+  year_level?: number
+  year?: string | number
+  section_label?: string
+  status?: UserStatus
+  created_at: string
   // UI fields for editing profile within student form
-  name?: string;
-  studentNo?: string; // Alias for student_no (form compatibility)
-  email?: string;
-  password?: string;
-};
+  name?: string
+  studentNo?: string // Alias for student_no (form compatibility)
+  email?: string
+  password?: string
+  confirmPassword?: string
+}
+
+export type StudentRecord = Student
 
 export type Subject = {
   id: string
@@ -86,6 +103,7 @@ export type Subject = {
   title: string
   units: number
   has_laboratory?: boolean
+  hasLab?: boolean
   lecture_hours?: number
   lab_hours?: number
   created_at: string
@@ -110,6 +128,8 @@ export type ClassRecord = {
   room?: string
   created_at: string
   studentIds?: string[]
+  student_ids?: string[]
+  students?: Student[]
   subject?: Subject
   instructor?: Instructor
   section?: Section
@@ -141,6 +161,7 @@ export type GradeSummary = {
   student_id: string
   preliminary_grade?: number
   midterm_grade?: number
+  prefinal_grade?: number
   final_grade?: number
   overall_grade?: number
   remarks?: string
@@ -161,6 +182,7 @@ export type GradeRow = {
   labExam?: number
   prelim?: DetailedTermScores
   midterm?: DetailedTermScores
+  prefinal?: DetailedTermScores
   final?: DetailedTermScores
 }
 
@@ -168,15 +190,18 @@ export type Prediction = {
   id: string
   class_id: string
   student_id: string
-  status: PredictionStatus
+  status: PredictionStatus | string
   confidence: number
   basis: Record<string, any>
   generated_at: string
+  current_grade?: number
+  predicted_grade?: number
 }
 
 export type PredictionAnalysis = {
   preliminary: number
   midterm: number
+  prefinal?: number
   final: number
   overall: number
   gpaEquiv: string
@@ -208,33 +233,48 @@ export type Report = {
   type: ReportType
   title: string
   generated_by?: string
-  export_format?: 'view' | 'print' | 'pdf' | 'excel'
+  export_format?: 'view' | 'print' | 'pdf' | 'excel' | 'csv'
   file_url?: string
   created_at: string
 }
 
-export type GradingPeriodKey = 'prelim' | 'midterm' | 'final'
-export type TermComponentField = 'attendance' | 'quiz' | 'labActivity' | 'activity' | 'exam'
+export type GradingPeriodKey = 'prelim' | 'midterm' | 'prefinal' | 'final'
+export type TermComponentField =
+  | 'attendance'
+  | 'quiz'
+  | 'activity'
+  | 'participation'
+  | 'exam'
+  | 'labActivity'
 
 export type TermComponentItems = {
   attendance: number[]
   quiz: number[]
-  labActivity: number[]
   activity: number[]
+  participation: number[]
   exam: number[]
+  labActivity?: number[]
 }
 
 export type DetailedTermScores = {
   attendance: number
   quiz: number
-  labActivity: number | null
   activity: number
+  participation: number
   exam: number
+  labActivity: number | null
+  rawGrade?: number
   computedTermGrade: number
+  termGrade: number
+  hasData?: boolean
   items?: TermComponentItems
   // Legacy compatibility
+  quiz1?: number
+  quiz2?: number
+  act1?: number
+  act2?: number
+  act3?: number
   activities?: number
-  participation?: number
   labExam?: number | null
 }
 
@@ -244,6 +284,7 @@ export type DetailedGradingSheet = {
   studentNo?: string
   prelim: DetailedTermScores
   midterm: DetailedTermScores
+  prefinal?: DetailedTermScores
   final: DetailedTermScores
   // Legacy flat fields for backward compatibility
   prelimExam?: number
@@ -255,7 +296,11 @@ export type DetailedGradingSheet = {
   midtermScore?: number
   finalScore?: number
   average: number
+  overallGrade: number
+  predictedFinal?: number
   status: PredictionStatus
+  submittedToAdmin?: boolean
+  submittedAt?: string
 }
 
 export type StudentAssessmentRow = {
@@ -266,6 +311,7 @@ export type StudentAssessmentRow = {
   hasLaboratory: boolean
   prelim: DetailedTermScores
   midterm: DetailedTermScores
+  prefinal?: DetailedTermScores
   final: DetailedTermScores
   prelimExam?: number
   quiz?: number
@@ -278,29 +324,36 @@ export type StudentAssessmentRow = {
 
 export type NotificationItem = {
   id: string
+  user_id?: string | null
   title: string
   message: string
   timestamp: string
   read: boolean
+  is_read?: boolean
   role: Role | 'all'
-  category?: 'system' | 'grades' | 'risk' | 'report' | 'user'
+  category?: 'system' | 'grades' | 'risk' | 'report' | 'user' | 'class' | 'enrollment' | 'dropout'
+  created_at?: string
 }
 
 export type ActivityLogItem = {
   id: string
   actor: string
+  actor_id?: string | null
   action: string
   timestamp: string
   timeFormatted: string
   target?: string
+  metadata?: Record<string, any>
 }
 
 export type SystemSettings = {
+  id?: string
   schoolYear: string
   semester: string
   passingGrade: number
   prelimWeight: number
   midtermWeight: number
+  prefinalWeight?: number
   finalWeight: number
   quizWeight: number
   assignmentWeight: number

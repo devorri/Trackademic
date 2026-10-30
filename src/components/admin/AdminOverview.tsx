@@ -1,366 +1,177 @@
-import React from 'react'
-import { useData } from '../../context/DataContext'
-import { Users, UserCheck, BookOpen, AlertTriangle, ArrowRight, ShieldAlert, TrendingUp } from 'lucide-react'
+import React from 'react';
+import {
+  Users,
+  BookOpen,
+  UserCheck,
+  TrendingUp,
+  Eye,
+  Calculator
+} from 'lucide-react';
+import { useData } from '../../context/DataContext';
+import { formatCourseSection } from '../../utils/helpers';
 
 export const AdminOverview: React.FC = () => {
   const {
     students,
-    users,
-    classes,
+    subjects,
     instructors,
-    atRiskRows,
-    boundToFailRows,
+    classes,
     setActiveSection,
-    setSelectedClassId,
-  } = useData()
+    allComputedRows
+  } = useData();
 
-  const totalInstructors = users.filter((user) => user.role === 'instructor').length
-  const totalStudents = students.length
-  const totalClasses = classes.length
-  const totalAtRisk = atRiskRows.length + boundToFailRows.length
+  const encodedRows = allComputedRows.filter((r) => r.currentGrade > 0);
+  const overallAvg =
+    encodedRows.length > 0
+      ? Math.round(encodedRows.reduce((acc, r) => acc + r.currentGrade, 0) / encodedRows.length)
+      : 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem' }}>
-      {/* Welcome Banner */}
-      <div
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 4px 16px -2px rgba(15, 23, 42, 0.05)',
-          borderRadius: '16px',
-          padding: '1.6rem 2rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
+    <section className="content-section">
+      <div className="section-header">
         <div>
-          <span
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: '#1d4ed8',
-              background: '#eff6ff',
-              border: '1px solid #dbeafe',
-              padding: '0.25rem 0.65rem',
-              borderRadius: '999px',
-            }}
-          >
-            System Administrator Portal
-          </span>
-          <h2 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.6rem', color: '#0f172a', fontWeight: 800 }}>
-            Welcome, Administrator!
-          </h2>
-          <p style={{ margin: 0, color: '#475569', fontSize: '0.92rem' }}>
-            Here is your live high-level summary and real-time status of the academic system.
+          <h1>Admin Dashboard</h1>
+          <p className="section-subtitle">
+            Live institutional overview of students, instructors, subjects, and submitted grades.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '0.6rem' }}>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setActiveSection('predictive_analytics')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-          >
-            <TrendingUp size={16} /> View Analytics
-          </button>
-        </div>
+        <button
+          type="button"
+          className="primary-btn"
+          onClick={() => setActiveSection('grades')}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+        >
+          <Calculator size={16} />
+          <span>View All Subject Grades</span>
+        </button>
       </div>
 
-      {/* 4 Primary Summary Cards Requested by User */}
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '1.2rem',
-        }}
-        aria-label="System Summary Cards"
-      >
-        {/* Total Instructor */}
-        <div
-          onClick={() => setActiveSection('instructors')}
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Total ng Instructor
-            </span>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: '#eff6ff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#2563eb',
-              }}
-            >
-              <Users size={20} />
-            </div>
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#2563eb' }}>
+            <Users size={18} />
           </div>
-          <div style={{ marginTop: '0.9rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{totalInstructors}</strong>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#2563eb', fontSize: '0.82rem', marginTop: '0.4rem', fontWeight: 600 }}>
-              <span>Manage instructors</span> <ArrowRight size={14} />
-            </div>
-          </div>
-        </div>
-
-        {/* Total Student */}
-        <div
-          onClick={() => setActiveSection('students')}
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Total ng Student
-            </span>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: '#f0fdf4',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#16a34a',
-              }}
-            >
-              <UserCheck size={20} />
-            </div>
-          </div>
-          <div style={{ marginTop: '0.9rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{totalStudents}</strong>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#16a34a', fontSize: '0.82rem', marginTop: '0.4rem', fontWeight: 600 }}>
-              <span>View student directory</span> <ArrowRight size={14} />
-            </div>
-          </div>
-        </div>
-
-        {/* Total Classes */}
-        <div
-          onClick={() => setActiveSection('classes')}
-          style={{
-            background: '#ffffff',
-            border: '1px solid #e2e8f0',
-            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Total Classes
-            </span>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: '#f5f3ff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#7c3aed',
-              }}
-            >
-              <BookOpen size={20} />
-            </div>
-          </div>
-          <div style={{ marginTop: '0.9rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{totalClasses}</strong>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#7c3aed', fontSize: '0.82rem', marginTop: '0.4rem', fontWeight: 600 }}>
-              <span>Subjects & classes</span> <ArrowRight size={14} />
-            </div>
-          </div>
-        </div>
-
-        {/* At-Risk Students */}
-        <div
-          onClick={() => setActiveSection('predictive_analytics')}
-          style={{
-            background: '#fff5f5',
-            border: '1px solid #fecaca',
-            boxShadow: '0 4px 14px rgba(239, 68, 68, 0.06)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              At-Risk Students
-            </span>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                background: '#fee2e2',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#dc2626',
-              }}
-            >
-              <AlertTriangle size={20} />
-            </div>
-          </div>
-          <div style={{ marginTop: '0.9rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#dc2626', lineHeight: 1.1 }}>{totalAtRisk}</strong>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#b91c1c', fontSize: '0.82rem', marginTop: '0.4rem', fontWeight: 600 }}>
-              <span>Predictive failure watchlist</span> <ArrowRight size={14} />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Schoolwide Risk Watchlist */}
-      <section className="panel data-card" style={{ padding: '1.5rem' }}>
-        <div className="card-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <ShieldAlert size={20} color="#f59e0b" />
-              Schoolwide Predictive Risk Watchlist
-            </h3>
-            <span className="chip" style={{ marginTop: '0.3rem' }}>
-              Students flagged as At-Risk or Bound-to-Fail based on real-time class records
-            </span>
+            <p className="stat-label">Total Students</p>
+            <p className="stat-value">{students.length}</p>
+            <p className="stat-sub">
+              {students.filter((s) => s.status !== 'dropped').length} Active ·{' '}
+              {students.filter((s) => s.status === 'dropped').length} Dropped
+            </p>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => setActiveSection('predictive_analytics')}
-              style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}
-            >
-              Full Predictive Analytics
-            </button>
+        </article>
+
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(16, 185, 129, 0.12)', color: '#16a34a' }}>
+            <UserCheck size={18} />
           </div>
+          <div>
+            <p className="stat-label">Total Instructors</p>
+            <p className="stat-value">{instructors.length}</p>
+            <p className="stat-sub">Registered faculty accounts</p>
+          </div>
+        </article>
+
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
+            <BookOpen size={18} />
+          </div>
+          <div>
+            <p className="stat-label">Total Subjects</p>
+            <p className="stat-value">{subjects.length}</p>
+            <p className="stat-sub">{classes.length} active class sections</p>
+          </div>
+        </article>
+
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(139, 92, 246, 0.12)', color: '#7c3aed' }}>
+            <TrendingUp size={18} />
+          </div>
+          <div>
+            <p className="stat-label">Average Performance</p>
+            <p className="stat-value">{encodedRows.length > 0 ? `${overallAvg}%` : '—'}</p>
+            <p className="stat-sub">Rounded across encoded classes</p>
+          </div>
+        </article>
+      </div>
+
+      {/* Recent Classes Overview */}
+      <article className="panel" style={{ marginTop: '24px' }}>
+        <div className="panel-header">
+          <div>
+            <h2>Active Classes &amp; Assigned Instructors</h2>
+            <p>Click View Grades to inspect read-only student grades per subject and section</p>
+          </div>
+          <button
+            type="button"
+            className="ghost-btn"
+            onClick={() => setActiveSection('classes')}
+          >
+            <span>Manage All Classes</span>
+          </button>
         </div>
 
-        <div style={{ overflowX: 'auto', marginTop: '1rem' }}>
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Class & Section</th>
+                <th>Class Subject</th>
+                <th>Course &amp; Section</th>
                 <th>Assigned Instructor</th>
-                <th>Current Performance</th>
-                <th>Prediction</th>
-                <th>Status</th>
-                <th>Action</th>
+                <th>Enrolled Students</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {[...boundToFailRows, ...atRiskRows].length === 0 ? (
-                <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', color: '#9ca3af', padding: '1.8rem' }}>
-                    ✅ No students currently flagged as Bound to Fail or At Risk schoolwide.
+              {classes.slice(0, 8).map((cls) => (
+                <tr key={cls.id}>
+                  <td>
+                    <strong style={{ color: '#0f172a', display: 'block' }}>{cls.subject?.code}</strong>
+                    <small style={{ color: '#475569' }}>{cls.subject?.title}</small>
+                  </td>
+                  <td>
+                    <span
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontWeight: 700,
+                        fontSize: '0.78rem'
+                      }}
+                    >
+                      {formatCourseSection(cls.section?.name || '')}
+                    </span>
+                  </td>
+                  <td style={{ fontWeight: 600, color: '#0f172a' }}>
+                    {cls.instructor?.name || 'Unassigned'}
+                  </td>
+                  <td>{cls.student_ids?.length || 0} students</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => setActiveSection('grades')}
+                    >
+                      <Eye size={14} />
+                      <span>View Grades</span>
+                    </button>
                   </td>
                 </tr>
-              ) : (
-                [...boundToFailRows, ...atRiskRows].map((item, idx) => {
-                  const studentName = item.student?.name || 'Student'
-                  const studentNo = item.student?.student_no || item.student?.studentNo || 'N/A'
-                  const instructorName =
-                    instructors.find((i) => i.id === item.classItem?.instructor_id)?.name || 'Mr. Reyes'
-
-                  return (
-                    <tr
-                      key={idx}
-                      className={item.computed.status === 'Bound to Fail' ? 'bound-to-fail-row' : 'risk-row'}
-                    >
-                      <td>
-                        <strong>{studentName}</strong>
-                        <small>{studentNo}</small>
-                      </td>
-                      <td>
-                        <strong>{item.classItem?.subject?.title || 'Subject'}</strong>
-                        <small>{item.classItem?.section?.name || 'CIT A'}</small>
-                      </td>
-                      <td>{instructorName}</td>
-                      <td>
-                        <strong style={{ fontSize: '1rem', color: '#0f172a' }}>{item.computed.overall}%</strong>
-                      </td>
-                      <td>
-                        <strong style={{ color: '#2563eb', fontWeight: 700 }}>{Math.min(100, item.computed.overall + 2)}%</strong>
-                      </td>
-                      <td>
-                        <span
-                          style={{
-                            padding: '0.3rem 0.75rem',
-                            borderRadius: '9999px',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            background: item.computed.status === 'Bound to Fail' ? '#fef2f2' : '#fffbeb',
-                            color: item.computed.status === 'Bound to Fail' ? '#b91c1c' : '#b45309',
-                            border: item.computed.status === 'Bound to Fail' ? '1px solid #fecaca' : '1px solid #fde68a',
-                          }}
-                        >
-                          {item.computed.status}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', cursor: 'pointer' }}
-                          onClick={() => {
-                            setSelectedClassId(item.classItem.id)
-                            setActiveSection('classes')
-                          }}
-                        >
-                          View Class
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })
+              ))}
+              {classes.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="empty-cell">
+                    No classes created yet. Go to Classes to create and assign a subject class.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
-  )
-}
+      </article>
+    </section>
+  );
+};
 
-export default AdminOverview
+export default AdminOverview;

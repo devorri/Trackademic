@@ -3,6 +3,7 @@ import type {
   User,
   Student,
   Subject,
+  Section,
   ClassRecord,
   GradeRow,
   Report,
@@ -17,17 +18,19 @@ import type {
   TermComponentField,
   Role,
   UserStatus,
+  StudentAssessmentRow,
 } from '../utils/types'
 import {
   computeGrade,
   computeClassAverages,
   getSubjectTitle,
-  computeTermGrade,
-  computeOverallFromTerms,
   computeItemsAverage,
+  createEmptyTermScores,
   ensureTermScores,
+  recalculateSheetGrades,
   normalizeCourseSection,
   formatCourseSection,
+  isTermEncoded,
 } from '../utils/helpers'
 import {
   printStudentGradingBookReport,
@@ -38,25 +41,21 @@ import {
   dbProfiles,
   dbStudents,
   dbSubjects,
+  dbSections,
   dbClasses,
   dbInstructors,
   dbGradeComponents,
   dbGrades,
   dbGradeSummaries,
+  dbPredictions,
+  dbNotifications,
+  dbActivityLogs,
+  dbSystemSettings,
+  dbReports,
 } from '../utils/db'
-import {
-  initialUsers,
-  initialStudents,
-  initialSubjects,
-  initialClasses,
-  initialGrades,
-  initialDetailedGradingSheets,
-  initialNotifications,
-  initialActivityLogs,
-  initialSystemSettings,
-  initialReports,
-  studentTemplateRecords,
-} from '../data/initialData'
+
+const isUuid = (val?: string | null): boolean =>
+  Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
 
 export const blankUser: Omit<User, 'id'> = {
   name: '',
@@ -70,77 +69,119 @@ export const blankStudent = {
   profile_id: '',
   student_no: '',
   studentNo: '',
-  course: 'CIT',
-  section_label: 'A',
+  course: 'BSIT 1A',
+  section_label: '1A',
+  status: 'active' as UserStatus,
   name: '',
   email: '',
   password: '',
+  confirmPassword: '',
   year_level: 1,
+  year: '1st Year',
+  created_at: new Date().toISOString(),
 } as Omit<Student, 'id'>
 
 export const blankSubject = {
   code: '',
   title: '',
   units: 3,
+  has_laboratory: false,
+  hasLab: false,
+  created_at: new Date().toISOString(),
 } as Omit<Subject, 'id'>
 
-function createDefaultStudentSheet(
+export const defaultSystemSettings: SystemSettings = {
+  schoolYear: '2025-2026',
+  semester: '1st Semester',
+  passingGrade: 75,
+  prelimWeight: 40,
+  midtermWeight: 60,
+  prefinalWeight: 60,
+  finalWeight: 60,
+  attendanceWeight: 10,
+  quizWeight: 20,
+  activityWeight: 20,
+  participationWeight: 10,
+  examWeight: 40,
+  assignmentWeight: 0,
+  labExamWeight: 0,
+  withLabQuizWeight: 20,
+  withLabActivityWeight: 20,
+  withLabExamWeight: 40,
+  automatedRiskAlerts: true,
+  systemPreferences: {
+    theme: 'light',
+    allowExport: true,
+    autoCompute: true,
+  },
+}
+
+/**
+ * Creates a clean, unencoded grading sheet for a student (NO auto-filled scores).
+ */
+export function createEmptyStudentSheet(
   studentId: string,
   studentName: string,
   studentNo: string,
   hasLab: boolean,
 ): DetailedGradingSheet {
-  const prelim = ensureTermScores(
-    { attendance: 90, quiz: 84, labActivity: hasLab ? 85 : null, activity: 85, exam: 82 },
-    82,
-    hasLab,
-  )
-  const midterm = ensureTermScores(
-    { attendance: 91, quiz: 85, labActivity: hasLab ? 86 : null, activity: 86, exam: 84 },
-    84,
-    hasLab,
-  )
-  const final = ensureTermScores(
-    { attendance: 92, quiz: 86, labActivity: hasLab ? 87 : null, activity: 87, exam: 86 },
-    86,
-    hasLab,
-  )
-  const average = computeOverallFromTerms(
-    prelim.computedTermGrade,
-    midterm.computedTermGrade,
-    final.computedTermGrade,
-  )
+  const prelim = createEmptyTermScores(hasLab)
+  const midterm = createEmptyTermScores(hasLab)
+  const prefinal = createEmptyTermScores(hasLab)
+  const final = createEmptyTermScores(hasLab)
+
   return {
     studentId,
     studentName,
     studentNo,
     prelim,
     midterm,
+    prefinal,
     final,
-    prelimExam: prelim.exam,
-    quiz: prelim.quiz,
-    activity: prelim.activity,
-    attendance: prelim.attendance,
-    labExam: prelim.labActivity,
-    average,
-    status: 'On Track',
+    prelimExam: 0,
+    quiz: 0,
+    activity: 0,
+    attendance: 0,
+    participation: 0,
+    labExam: hasLab ? 0 : null,
+    midtermScore: 0,
+    finalScore: 0,
+    average: 0,
+    overallGrade: 0,
+    predictedFinal: 0,
+    status: 'Pending',
   }
+}
+
+function formatRelativeOrTime(isoString?: string): string {
+  if (!isoString) return 'Just now'
+  const date = new Date(isoString)
+  if (Number.isNaN(date.getTime())) return isoString
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 interface DataContextType {
   // Data
   users: User[]
   setUsers: React.Dispatch<React.SetStateAction<User[]>>
-  instructors: User[]
+  instructors: (User & { profile_id?: string; employee_no?: string })[]
   students: Student[]
   setStudents: React.Dispatch<React.SetStateAction<Student[]>>
   subjects: Subject[]
   setSubjects: React.Dispatch<React.SetStateAction<Subject[]>>
+  sections: Section[]
+  setSections: React.Dispatch<React.SetStateAction<Section[]>>
   classes: ClassRecord[]
   setClasses: React.Dispatch<React.SetStateAction<ClassRecord[]>>
   grades: Record<string, GradeRow[]>
   setGrades: React.Dispatch<React.SetStateAction<Record<string, GradeRow[]>>>
   detailedGradingSheets: Record<string, DetailedGradingSheet[]>
+  detailedGrades: Record<string, DetailedGradingSheet[]>
   setDetailedGradingSheets: React.Dispatch<React.SetStateAction<Record<string, DetailedGradingSheet[]>>>
   notifications: NotificationItem[]
   setNotifications: React.Dispatch<React.SetStateAction<NotificationItem[]>>
@@ -156,6 +197,11 @@ interface DataContextType {
   // State
   searchTerm: string
   setSearchTerm: (term: string) => void
+  studentQuery: string
+  setStudentQuery: (term: string) => void
+  subjectQuery: string
+  setSubjectQuery: (term: string) => void
+  filteredSubjects: Subject[]
   userForm: Omit<User, 'id'>
   setUserForm: React.Dispatch<React.SetStateAction<Omit<User, 'id'>>>
   editingUserId: string | null
@@ -164,10 +210,15 @@ interface DataContextType {
   setStudentForm: React.Dispatch<React.SetStateAction<Omit<Student, 'id'>>>
   editingStudentId: string | null
   setEditingStudentId: (id: string | null) => void
+  handleEditStudent: (student: Student) => void
+  handleDeleteStudent: (studentId: string) => Promise<void>
+  resetStudentForm: () => void
   subjectForm: Omit<Subject, 'id'>
   setSubjectForm: React.Dispatch<React.SetStateAction<Omit<Subject, 'id'>>>
   editingSubjectId: string | null
   setEditingSubjectId: (id: string | null) => void
+  handleEditSubject: (subject: Subject) => void
+  resetSubjectForm: () => void
   selectedClassId: string | null
   setSelectedClassId: (id: string | null) => void
   activeSection: DashboardSection
@@ -186,9 +237,11 @@ interface DataContextType {
   filteredStudents: Student[]
 
   // Methods
+  refreshData: () => Promise<void>
   handleSaveUser: (event: React.FormEvent) => Promise<void>
   handleSaveStudent: (event: React.FormEvent) => Promise<void>
   deleteStudent: (studentId: string) => Promise<void>
+  toggleStudentDropOut: (studentId: string) => Promise<void>
   handleSaveSubject: (event: React.FormEvent) => Promise<void>
   deleteSubject: (subjectId: string) => Promise<void>
   createClass: (classData: Omit<ClassRecord, 'id' | 'created_at'>) => Promise<ClassRecord>
@@ -223,13 +276,18 @@ interface DataContextType {
     field: TermComponentField,
   ) => void
   updateAssessmentGrade: (classId: string, studentId: string, field: string, value: number) => void
+  submitClassGradesToAdmin: (classId: string, instructorName?: string) => Promise<void>
   generateReport: (type: string, activeUserName: string) => void
   reportText: () => string
   printReport: () => void
   printStudentGradingBookReport: (studentId?: string, gradesOnly?: boolean) => void
   printClassGradeReport: (classId?: string) => void
-  studentTemplateRecords: typeof studentTemplateRecords
+  studentTemplateRecords: Record<string, any>
   markNotificationRead: (id: string) => void
+  markNotificationAsRead: (id: string) => void
+  markAllNotificationsAsRead: () => void
+  deleteNotification: (id: string) => void
+  clearAllNotifications: () => void
   addNotification: (notif: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) => void
   addActivityLog: (actor: string, action: string, target?: string) => void
   updateSettings: (newSettings: Partial<SystemSettings>) => void
@@ -246,303 +304,428 @@ export function useData(): DataContextType {
 }
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Data state initialized with rich defaults
-  const [users, setUsers] = useState<User[]>(initialUsers)
-  const [students, setStudents] = useState<Student[]>(initialStudents)
-  const [subjects, setSubjects] = useState<Subject[]>(initialSubjects)
-  const [classes, setClasses] = useState<ClassRecord[]>(initialClasses)
-  const [grades, setGrades] = useState<Record<string, GradeRow[]>>(initialGrades)
-  const [detailedGradingSheets, setDetailedGradingSheets] = useState<Record<string, DetailedGradingSheet[]>>(
-    initialDetailedGradingSheets,
-  )
-  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications)
-  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>(initialActivityLogs)
-  const [settings, setSettings] = useState<SystemSettings>(initialSystemSettings)
-  const [reports, setReports] = useState<Report[]>(initialReports)
-  const [loading, setLoading] = useState(false)
+  // Pure database-driven state — NO mock/fake initial data
+  const [users, setUsers] = useState<User[]>([])
+  const [students, setStudents] = useState<Student[]>([])
+  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [sections, setSections] = useState<Section[]>([])
+  const [classes, setClasses] = useState<ClassRecord[]>([])
+  const [grades, setGrades] = useState<Record<string, GradeRow[]>>({})
+  const [detailedGradingSheets, setDetailedGradingSheets] = useState<
+    Record<string, DetailedGradingSheet[]>
+  >({})
+  const [notifications, setNotifications] = useState<NotificationItem[]>([])
+  const [activityLogs, setActivityLogs] = useState<ActivityLogItem[]>([])
+  const [settings, setSettings] = useState<SystemSettings>(defaultSystemSettings)
+  const [reports, setReports] = useState<Report[]>([])
+  const [loading, setLoading] = useState(true)
   const [studentRecordsModalId, setStudentRecordsModalId] = useState<string | null>(null)
 
   // Form state
   const [searchTerm, setSearchTerm] = useState('')
+  const [studentQuery, setStudentQuery] = useState('')
+  const [subjectQuery, setSubjectQuery] = useState('')
   const [userForm, setUserForm] = useState<Omit<User, 'id'>>(blankUser)
   const [editingUserId, setEditingUserId] = useState<string | null>(null)
   const [studentForm, setStudentForm] = useState<Omit<Student, 'id'>>(blankStudent)
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null)
   const [subjectForm, setSubjectForm] = useState<Omit<Subject, 'id'>>(blankSubject)
   const [editingSubjectId, setEditingSubjectId] = useState<string | null>(null)
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(initialClasses[0]?.id || null)
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<DashboardSection>('overview')
 
   const [dbInstructorsList, setDbInstructorsList] = useState<any[]>([])
 
-  // Load data from database on mount if available, else keep rich defaults
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [
-          profilesData,
-          studentsData,
-          instructorsData,
-          subjectsData,
-          classesData,
-          componentsData,
-          rawGradesData,
-        ] = await Promise.all([
-          dbProfiles.getAll().catch(() => []),
-          dbStudents.getAll().catch(() => []),
-          dbInstructors.getAll().catch(() => []),
-          dbSubjects.getAll().catch(() => []),
-          dbClasses.getAll().catch(() => []),
-          dbGradeComponents.getAll().catch(() => []),
-          dbGrades.getAll().catch(() => []),
+  const weightsConfig = useMemo(
+    () => ({
+      attendance: settings.attendanceWeight || 10,
+      quiz: settings.quizWeight || 20,
+      activity: settings.activityWeight || 20,
+      participation: settings.participationWeight || 10,
+      exam: settings.examWeight || 40,
+    }),
+    [
+      settings.attendanceWeight,
+      settings.quizWeight,
+      settings.activityWeight,
+      settings.participationWeight,
+      settings.examWeight,
+    ],
+  )
+
+  const refreshData = async () => {
+    setLoading(true)
+    try {
+      const [
+        profilesData,
+        studentsData,
+        instructorsData,
+        subjectsData,
+        sectionsData,
+        classesData,
+        componentsData,
+        rawGradesData,
+        summariesData,
+        predictionsData,
+        notificationsData,
+        activityLogsData,
+        settingsData,
+        reportsData,
+      ] = await Promise.all([
+        dbProfiles.getAll().catch(() => []),
+        dbStudents.getAll().catch(() => []),
+        dbInstructors.getAll().catch(() => []),
+        dbSubjects.getAll().catch(() => []),
+        dbSections.getAll().catch(() => []),
+        dbClasses.getAll().catch(() => []),
+        dbGradeComponents.getAll().catch(() => []),
+        dbGrades.getAll().catch(() => []),
+        dbGradeSummaries.getAll().catch(() => []),
+        dbPredictions.getAll().catch(() => []),
+        dbNotifications.getAll().catch(() => []),
+        dbActivityLogs.getAll().catch(() => []),
+        dbSystemSettings.get().catch(() => null),
+        dbReports.getAll().catch(() => []),
+      ])
+
+      setDbInstructorsList(instructorsData || [])
+      setSections(sectionsData || [])
+
+      const profileMap = new Map<string, any>()
+      const loadedUsers: User[] = (profilesData || []).map((profile) => {
+        profileMap.set(profile.id, profile)
+        const rawName =
+          `${profile.first_name || ''} ${profile.last_name || ''}`.trim() ||
+          profile.name ||
+          profile.email?.split('@')[0] ||
+          'User'
+        const role = (
+          profile.role === 'faculty' || profile.role === 'instructor'
+            ? 'instructor'
+            : profile.role === 'admin' || profile.role === 'administrator'
+            ? 'administrator'
+            : 'student'
+        ) as Role
+        const email = profile.email || ''
+        const status: UserStatus =
+          profile.avatar_url === 'DROPPED' || profile.status === 'dropped'
+            ? 'dropped'
+            : (profile.status as UserStatus) || 'active'
+        return {
+          id: profile.id,
+          profile_id: profile.id,
+          name: rawName,
+          email,
+          role,
+          status,
+          password: profile.password_plain || 'password123',
+        }
+      })
+      setUsers(loadedUsers)
+
+      const loadedStudents: Student[] = (studentsData || []).map((s: any) => {
+        const prof = s.profiles || profileMap.get(s.profile_id)
+        const isDropped =
+          prof?.avatar_url === 'DROPPED' ||
+          prof?.status === 'dropped' ||
+          prof?.status === 'inactive'
+        const norm = normalizeCourseSection(s.course, s.section_label)
+        const yl = Number(s.year_level) || 1
+        const yearStr = `${yl}${yl === 1 ? 'st' : yl === 2 ? 'nd' : yl === 3 ? 'rd' : 'th'} Year`
+        return {
+          id: s.id,
+          profile_id: s.profile_id,
+          student_no: s.student_no,
+          studentNo: s.student_no,
+          name:
+            `${prof?.first_name || ''} ${prof?.last_name || ''}`.trim() ||
+            prof?.email?.split('@')[0] ||
+            'Student',
+          email: prof?.email || '',
+          course: norm.display,
+          section_label: norm.section_label,
+          status: isDropped ? 'dropped' : 'active',
+          year_level: yl,
+          year: yearStr,
+          created_at: s.created_at,
+          password: prof?.password_plain || 'password123',
+        }
+      })
+      setStudents(loadedStudents)
+
+      const loadedSubjects: Subject[] = (subjectsData || []).map((s: any) => ({
+        ...s,
+        units: Number(s.units) || 3,
+        has_laboratory: Boolean(s.has_laboratory),
+        hasLab: Boolean(s.has_laboratory),
+      }))
+      setSubjects(loadedSubjects)
+
+      if (settingsData) {
+        setSettings((prev) => ({
+          ...prev,
+          id: settingsData.id,
+          schoolYear: settingsData.school_year || prev.schoolYear,
+          semester: settingsData.semester || prev.semester,
+          passingGrade: Number(settingsData.passing_grade) || 75,
+          prelimWeight: Number(settingsData.prelim_weight) || 40,
+          midtermWeight: Number(settingsData.midterm_weight) || 60,
+          finalWeight: Number(settingsData.final_weight) || 60,
+          quizWeight: Number(settingsData.quiz_weight) || 20,
+          activityWeight: Number(settingsData.activity_weight) || 20,
+          examWeight: Number(settingsData.exam_weight) || 40,
+          automatedRiskAlerts: Boolean(settingsData.email_alerts),
+        }))
+      }
+
+      const loadedClasses: ClassRecord[] = (classesData || []).map((c: any) => {
+        const rawSecName = c.section?.name || 'BSIT 1A'
+        const rawSecCourse = c.section?.course || rawSecName.split(/[\s-]+/)[0] || 'BSIT'
+        return {
+          ...c,
+          section: c.section
+            ? {
+                ...c.section,
+                name: rawSecName,
+                course: rawSecCourse,
+              }
+            : {
+                id: c.section_id || '',
+                name: rawSecName,
+                course: rawSecCourse,
+                year_level: 1,
+                school_year: '2025-2026',
+                semester: '1st Semester',
+                created_at: c.created_at,
+              },
+        }
+      })
+      setClasses(loadedClasses)
+
+      if (loadedClasses.length > 0 && !selectedClassId) {
+        setSelectedClassId(loadedClasses[0].id)
+      }
+
+      // Reconstruct grading sheets strictly from real DB records (zero fake scores)
+      const nextSheets: Record<string, DetailedGradingSheet[]> = {}
+      const nextGrades: Record<string, GradeRow[]> = {}
+
+      for (const cls of loadedClasses) {
+        const enrolledIds = cls.studentIds || []
+        const hasLab = Boolean(cls.subject?.has_laboratory)
+        const classComponents = (componentsData || []).filter((comp) => comp.class_id === cls.id)
+        const classSummaries = (summariesData || []).filter((sum) => sum.class_id === cls.id)
+        const classPredictions = (predictionsData || []).filter((pred) => pred.class_id === cls.id)
+
+        // Include any students who have grades/summaries in this class as well as enrolledIds
+        const studentIdSet = new Set<string>([
+          ...enrolledIds,
+          ...classSummaries.map((s) => s.student_id),
+          ...classPredictions.map((p) => p.student_id),
         ])
 
-        if (instructorsData && instructorsData.length > 0) {
-          setDbInstructorsList(instructorsData)
-        }
+        const sheetRows: DetailedGradingSheet[] = []
 
-        if (profilesData && profilesData.length > 0) {
-          const usersData: User[] = profilesData.map((profile) => {
-            const rawName =
-              `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.name || 'User'
-            const role = (
-              profile.role === 'faculty' || profile.role === 'instructor'
-                ? 'instructor'
-                : profile.role === 'admin' || profile.role === 'administrator'
-                ? 'administrator'
-                : 'student'
-            ) as Role
-            const email =
-              profile.email || `${rawName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@sandigan.edu.ph`
-            return {
-              id: profile.id,
-              name: rawName,
-              email: email,
-              role: role,
-              status: (profile.status as UserStatus) || 'active',
-              password: profile.password_plain || 'password123',
-            }
-          })
-          setUsers((prev) => {
-            const combined = [...usersData]
-            for (const u of prev) {
-              if (!combined.some((item) => item.email.toLowerCase() === u.email.toLowerCase())) {
-                combined.push(u)
-              }
-            }
-            return combined
-          })
-        }
+        for (const sid of studentIdSet) {
+          const st = loadedStudents.find((s) => s.id === sid)
+          let sheetRow = createEmptyStudentSheet(
+            sid,
+            st?.name || 'Student',
+            st?.student_no || st?.studentNo || 'N/A',
+            hasLab,
+          )
 
-        let currentStudents: Student[] = []
-        if (studentsData && studentsData.length > 0) {
-          currentStudents = (studentsData as any[]).map((s) => {
-            const norm = normalizeCourseSection(s.course, s.section_label)
-            // Migrate any legacy BSIT DB records to CIT A / B in background
-            if (s.course !== norm.course || s.section_label !== norm.section_label) {
-              dbStudents
-                .update(s.id, { course: norm.course, section_label: norm.section_label })
-                .catch(() => {})
-            }
-            return {
-              id: s.id,
-              profile_id: s.profile_id,
-              student_no: s.student_no,
-              studentNo: s.student_no,
-              name:
-                `${s.profiles?.first_name || ''} ${s.profiles?.last_name || ''}`.trim() || 'Student',
-              email: s.profiles?.email || '',
-              course: norm.course,
-              section_label: norm.section_label,
-              year_level: s.year_level || 1,
-              created_at: s.created_at,
-              password: s.profiles?.password_plain || 'password123',
-            }
-          })
+          // 1. Check predictions.basis JSONB for full itemized term data
+          const predRecord = classPredictions.find((p) => p.student_id === sid)
+          if (predRecord?.basis && typeof predRecord.basis === 'object') {
+            const basis = predRecord.basis as any
+            if (basis.prelim) sheetRow.prelim = ensureTermScores(basis.prelim, 0, hasLab)
+            if (basis.midterm) sheetRow.midterm = ensureTermScores(basis.midterm, 0, hasLab)
+            if (basis.prefinal) sheetRow.prefinal = ensureTermScores(basis.prefinal, 0, hasLab)
+            if (basis.final) sheetRow.final = ensureTermScores(basis.final, 0, hasLab)
+            if (basis.submittedToAdmin) sheetRow.submittedToAdmin = Boolean(basis.submittedToAdmin)
+            if (basis.submittedAt) sheetRow.submittedAt = String(basis.submittedAt)
+          }
 
-          setStudents((prev) => {
-            const map = new Map<string, Student>()
-            prev.forEach((s) => map.set(s.id, s))
-            currentStudents.forEach((s) => map.set(s.id, s))
-            return Array.from(map.values())
-          })
-        }
-
-        if (subjectsData && subjectsData.length > 0) {
-          setSubjects((prev) => {
-            const map = new Map<string, Subject>()
-            prev.forEach((s) => map.set(s.id, s))
-            subjectsData.forEach((s) => {
-              const existing = Array.from(map.values()).find(
-                (item) => item.code.toLowerCase() === s.code.toLowerCase(),
+          // 2. Overlay relational component grades from grade_components + grades
+          if (classComponents.length > 0 && rawGradesData && rawGradesData.length > 0) {
+            for (const comp of classComponents) {
+              const gradeRec = rawGradesData.find(
+                (g) => g.component_id === comp.id && g.student_id === sid,
               )
-              map.set(s.id, {
-                ...existing,
-                ...s,
-                has_laboratory:
-                  s.has_laboratory ??
-                  existing?.has_laboratory ??
-                  s.code.toUpperCase().startsWith('ICT'),
-              })
-            })
-            return Array.from(map.values())
-          })
-        }
+              if (!gradeRec) continue
+              const scoreVal = Number(gradeRec.score)
+              const compNameLower = comp.name.toLowerCase()
 
-        if (classesData && classesData.length > 0) {
-          setClasses((prev) => {
-            const map = new Map<string, ClassRecord>()
-            prev.forEach((c) => map.set(c.id, c))
-            ;(classesData as any[]).forEach((c) => {
-              const normSec = normalizeCourseSection(c.section?.course, c.section?.name)
-              const normalizedClass: ClassRecord = {
-                ...c,
-                section: c.section
-                  ? {
-                      ...c.section,
-                      name: normSec.display,
-                      course: 'CIT',
-                    }
-                  : {
-                      id: c.section_id || 'sec-cit-a',
-                      name: 'CIT A',
-                      course: 'CIT',
-                      year_level: 1,
-                      school_year: '2025-2026',
-                      semester: '1st Semester',
-                      created_at: new Date().toISOString(),
-                    },
-              }
-              map.set(c.id, normalizedClass)
-            })
-            const allClasses = Array.from(map.values())
-
-            // Initialize detailed sheets and merge any DB component scores
-            setDetailedGradingSheets((prevSheets) => {
-              const nextSheets = { ...prevSheets }
-              for (const cls of allClasses) {
-                const enrolledIds = cls.studentIds || []
-                const hasLab =
-                  cls.subject?.has_laboratory ??
-                  cls.subject?.code?.toUpperCase().startsWith('ICT') ??
-                  false
-                const existingSheet = nextSheets[cls.id] || []
-                const existingMap = new Map(existingSheet.map((r) => [r.studentId, r]))
-                const updatedSheet: DetailedGradingSheet[] = [...existingSheet]
-
-                for (const sid of enrolledIds) {
-                  if (!existingMap.has(sid)) {
-                    const st =
-                      currentStudents.find((s) => s.id === sid) ||
-                      initialStudents.find((s) => s.id === sid)
-                    const newEntry = createDefaultStudentSheet(
-                      sid,
-                      st?.name || 'Student',
-                      st?.student_no || st?.studentNo || 'N/A',
-                      hasLab,
-                    )
-                    updatedSheet.push(newEntry)
-                    existingMap.set(sid, newEntry)
-                  }
-                }
-
-                // Overlay DB component grades if any exist for this class
-                const classComponents = (componentsData || []).filter((comp) => comp.class_id === cls.id)
-                if (classComponents.length > 0 && rawGradesData && rawGradesData.length > 0) {
-                  for (const sheetRow of updatedSheet) {
-                    for (const comp of classComponents) {
-                      const gradeRec = rawGradesData.find(
-                        (g) => g.component_id === comp.id && g.student_id === sheetRow.studentId,
-                      )
-                      if (!gradeRec) continue
-                      const periodKey: GradingPeriodKey =
-                        comp.grading_period === 'Midterm'
-                          ? 'midterm'
-                          : comp.grading_period === 'Final'
-                          ? 'final'
-                          : 'prelim'
-                      const compNameLower = comp.name.toLowerCase()
-                      const fieldKey: TermComponentField = compNameLower.includes('attend')
-                        ? 'attendance'
-                        : compNameLower.includes('quiz')
-                        ? 'quiz'
-                        : compNameLower.includes('lab')
-                        ? 'labActivity'
-                        : compNameLower.includes('exam')
-                        ? 'exam'
-                        : 'activity'
-
-                      const updatedTerm = {
-                        ...sheetRow[periodKey],
-                        [fieldKey]: Number(gradeRec.score),
-                      }
-                      updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
-                      sheetRow[periodKey] = updatedTerm
-                    }
-                    sheetRow.average = computeOverallFromTerms(
-                      sheetRow.prelim.computedTermGrade,
-                      sheetRow.midterm.computedTermGrade,
-                      sheetRow.final.computedTermGrade,
-                    )
-                  }
-                }
-
-                if (updatedSheet.length > 0) {
-                  nextSheets[cls.id] = updatedSheet
-                }
+              let periodKey: GradingPeriodKey = 'prelim'
+              if (comp.grading_period === 'Midterm') {
+                periodKey = 'midterm'
+              } else if (comp.grading_period === 'Final') {
+                periodKey = compNameLower.startsWith('prefinal:') ? 'prefinal' : 'final'
+              } else {
+                periodKey = 'prelim'
               }
 
-              // Sync grades state from nextSheets
-              setGrades((prevGrades) => {
-                const nextGrades = { ...prevGrades }
-                for (const cls of allClasses) {
-                  const sheetRows = nextSheets[cls.id] || []
-                  if (sheetRows.length > 0) {
-                    nextGrades[cls.id] = sheetRows.map((sr) => ({
-                      studentId: sr.studentId,
-                      student_name: sr.studentName,
-                      quizzes: sr.prelim.quiz,
-                      assignments: sr.prelim.activity,
-                      activities: sr.prelim.activity,
-                      midtermExam: sr.midterm.exam,
-                      finalExam: sr.final.exam,
-                      historical: Math.round(sr.prelim.computedTermGrade),
-                      attendance: sr.prelim.attendance,
-                      labExam: sr.prelim.labActivity ?? undefined,
-                      prelim: sr.prelim,
-                      midterm: sr.midterm,
-                      final: sr.final,
-                    }))
-                  }
-                }
-                return nextGrades
-              })
+              const cleanName = compNameLower.replace(/^prefinal:/, '').trim()
+              const fieldKey: TermComponentField = cleanName.includes('attend')
+                ? 'attendance'
+                : cleanName.includes('quiz')
+                ? 'quiz'
+                : cleanName.includes('partic')
+                ? 'participation'
+                : cleanName.includes('lab')
+                ? 'labActivity'
+                : cleanName.includes('exam')
+                ? 'exam'
+                : 'activity'
 
-              return nextSheets
-            })
+              const targetTerm = ensureTermScores(sheetRow[periodKey], 0, hasLab)
+              const existingItems = targetTerm.items || {
+                attendance: [0],
+                quiz: [0],
+                activity: [0],
+                participation: [0],
+                exam: [0],
+                labActivity: hasLab ? [0] : [],
+              }
 
-            return allClasses
-          })
+              // If basis didn't already populate multiple items for this field, set it from component score
+              const currentArr = existingItems[fieldKey] || [0]
+              const updatedArr =
+                currentArr.length <= 1 ? [scoreVal] : currentArr
+
+              const updatedTerm: DetailedTermScores = {
+                ...targetTerm,
+                [fieldKey]: scoreVal,
+                hasData: scoreVal > 0 || targetTerm.hasData,
+                items: {
+                  ...existingItems,
+                  [fieldKey]: updatedArr,
+                },
+              }
+              sheetRow[periodKey] = updatedTerm
+            }
+          }
+
+          // 3. Check grade_summaries fallback if summary exists without component scores
+          const summaryRec = classSummaries.find((s) => s.student_id === sid)
+          if (summaryRec) {
+            if (
+              !isTermEncoded(sheetRow.prelim) &&
+              typeof summaryRec.preliminary_grade === 'number' &&
+              summaryRec.preliminary_grade > 0
+            ) {
+              sheetRow.prelim = ensureTermScores(Number(summaryRec.preliminary_grade), 0, hasLab)
+            }
+            if (
+              !isTermEncoded(sheetRow.midterm) &&
+              typeof summaryRec.midterm_grade === 'number' &&
+              summaryRec.midterm_grade > 0
+            ) {
+              sheetRow.midterm = ensureTermScores(Number(summaryRec.midterm_grade), 0, hasLab)
+            }
+            if (
+              !isTermEncoded(sheetRow.final) &&
+              typeof summaryRec.final_grade === 'number' &&
+              summaryRec.final_grade > 0
+            ) {
+              sheetRow.final = ensureTermScores(Number(summaryRec.final_grade), 0, hasLab)
+            }
+          }
+
+          sheetRow = recalculateSheetGrades(sheetRow, hasLab)
+          if (st?.status === 'dropped') {
+            sheetRow.status = 'Dropped'
+          }
+          sheetRows.push(sheetRow)
         }
-      } catch (error) {
-        console.warn('Using seeded data as fallback:', error)
-      } finally {
-        setLoading(false)
+
+        nextSheets[cls.id] = sheetRows
+        nextGrades[cls.id] = sheetRows.map((sr) => ({
+          studentId: sr.studentId,
+          student_name: sr.studentName,
+          quizzes: sr.prelim.quiz,
+          assignments: sr.prelim.activity,
+          activities: sr.prelim.activity,
+          participation: sr.prelim.participation,
+          midtermExam: sr.midterm.exam,
+          finalExam: sr.final.exam,
+          historical: Math.round(sr.prelim.computedTermGrade || 0),
+          attendance: sr.prelim.attendance,
+          labExam: sr.prelim.labActivity ?? undefined,
+          prelim: sr.prelim,
+          midterm: sr.midterm,
+          prefinal: sr.prefinal,
+          final: sr.final,
+        }))
       }
-    }
 
-    loadData()
+      setDetailedGradingSheets(nextSheets)
+      setGrades(nextGrades)
+
+      // Map notifications from DB
+      const loadedNotifications: NotificationItem[] = (notificationsData || []).map((n: any) => ({
+        id: n.id,
+        user_id: n.user_id,
+        title: n.title,
+        message: n.message,
+        timestamp: formatRelativeOrTime(n.created_at),
+        created_at: n.created_at,
+        read: Boolean(n.is_read),
+        is_read: Boolean(n.is_read),
+        role: (n.role as Role | 'all') || 'all',
+        category: (n.category as any) || 'system',
+      }))
+      setNotifications(loadedNotifications)
+
+      // Map activity logs from DB
+      const loadedLogs: ActivityLogItem[] = (activityLogsData || []).map((log: any) => {
+        const actorProfile = log.actor_id ? profileMap.get(log.actor_id) : null
+        const actorName =
+          log.metadata?.actor_name ||
+          (actorProfile
+            ? `${actorProfile.first_name || ''} ${actorProfile.last_name || ''}`.trim()
+            : 'System')
+        return {
+          id: String(log.id),
+          actor: actorName || 'System',
+          actor_id: log.actor_id,
+          action: log.action,
+          timestamp: log.created_at,
+          timeFormatted: formatRelativeOrTime(log.created_at),
+          target: log.metadata?.target || log.table_name || 'System',
+          metadata: log.metadata,
+        }
+      })
+      setActivityLogs(loadedLogs)
+
+      setReports(reportsData || [])
+    } catch (error) {
+      console.error('Error loading data from Supabase:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refreshData()
   }, [])
 
-  // Activity log helper
+  // Helper to resolve an instructor's profile_id from instructor_id or profile_id
+  function resolveInstructorProfileId(instructorId?: string): string | null {
+    if (!instructorId) return null
+    const dbInst = dbInstructorsList.find(
+      (i: any) => i.id === instructorId || i.profile_id === instructorId,
+    )
+    if (dbInst?.profile_id) return dbInst.profile_id
+    const userMatch = users.find((u) => u.id === instructorId || u.profile_id === instructorId)
+    return userMatch?.id || null
+  }
+
+  // Activity log helper (persists to Supabase activity_logs)
   function addActivityLog(actor: string, action: string, target?: string) {
     const now = new Date()
-    const hours = now.getHours()
-    const minutes = now.getMinutes()
-    const ampm = hours >= 12 ? 'PM' : 'AM'
-    const formattedHours = hours % 12 || 12
-    const formattedMinutes = minutes < 10 ? `0${minutes}` : minutes
-    const timeFormatted = `${formattedHours}:${formattedMinutes} ${ampm}`
+    const timeFormatted = formatRelativeOrTime(now.toISOString())
 
     const newLog: ActivityLogItem = {
       id: crypto.randomUUID(),
@@ -553,58 +736,133 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       target,
     }
     setActivityLogs((prev) => [newLog, ...prev])
+
+    const actorUser = users.find(
+      (u) => u.name.toLowerCase() === actor.toLowerCase() || u.role === 'administrator',
+    )
+    dbActivityLogs
+      .create({
+        actor_id: isUuid(actorUser?.id) ? actorUser!.id : null,
+        action,
+        table_name: target || 'system',
+        metadata: { actor_name: actor, target: target || 'System' },
+      })
+      .catch((err) => console.warn('Activity log DB save notice:', err))
   }
 
-  // Notification helper
+  // Notification helper (persists to Supabase notifications)
   function addNotification(notif: Omit<NotificationItem, 'id' | 'timestamp' | 'read'>) {
+    const tempId = crypto.randomUUID()
     const newNotif: NotificationItem = {
-      id: crypto.randomUUID(),
+      id: tempId,
       ...notif,
       timestamp: 'Just now',
+      created_at: new Date().toISOString(),
       read: false,
     }
     setNotifications((prev) => [newNotif, ...prev])
+
+    dbNotifications
+      .create({
+        user_id: notif.user_id || null,
+        role: notif.role,
+        title: notif.title,
+        message: notif.message,
+        category: notif.category || 'system',
+      })
+      .then((created) => {
+        if (created?.id) {
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === tempId ? { ...n, id: created.id } : n)),
+          )
+        }
+      })
+      .catch((err) => console.warn('Notification DB save notice:', err))
   }
 
   function markNotificationRead(id: string) {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true, is_read: true } : n)),
+    )
+    dbNotifications.markRead(id).catch(() => {})
+  }
+
+  function markAllNotificationsAsRead() {
+    setNotifications((prev) => {
+      prev.forEach((n) => {
+        if (!n.read) dbNotifications.markRead(n.id).catch(() => {})
+      })
+      return prev.map((n) => ({ ...n, read: true, is_read: true }))
+    })
+  }
+
+  function deleteNotification(id: string) {
+    setNotifications((prev) => prev.filter((n) => n.id !== id))
+    dbNotifications.delete(id).catch(() => {})
+  }
+
+  function clearAllNotifications() {
+    setNotifications((prev) => {
+      prev.forEach((n) => dbNotifications.delete(n.id).catch(() => {}))
+      return []
+    })
   }
 
   function updateSettings(newSettings: Partial<SystemSettings>) {
     setSettings((prev) => {
       const updated = { ...prev, ...newSettings }
       addActivityLog('Administrator', `Updated system configuration & grading settings`, 'Settings')
+      dbSystemSettings
+        .upsert({
+          school_year: updated.schoolYear,
+          semester: updated.semester,
+          passing_grade: updated.passingGrade,
+          prelim_weight: updated.prelimWeight,
+          midterm_weight: updated.midtermWeight,
+          final_weight: updated.finalWeight,
+          exam_weight: updated.examWeight,
+          quiz_weight: updated.quizWeight,
+          activity_weight: updated.activityWeight,
+          email_alerts: updated.automatedRiskAlerts,
+        })
+        .catch((err) => console.warn('Settings DB save notice:', err))
       return updated
     })
   }
 
   // Computed values
   const instructors = useMemo(() => {
-    const list: (User & { profile_id?: string })[] = []
-    const seenIds = new Set<string>()
+    const list: (User & { profile_id?: string; employee_no?: string })[] = []
+    const seenProfileIds = new Set<string>()
+    const seenInstIds = new Set<string>()
 
     dbInstructorsList.forEach((inst: any) => {
       const name =
-        `${inst.profiles?.first_name || ''} ${inst.profiles?.last_name || ''}`.trim() || 'Instructor'
+        `${inst.profiles?.first_name || ''} ${inst.profiles?.last_name || ''}`.trim() ||
+        inst.profiles?.email?.split('@')[0] ||
+        'Instructor'
       const email = inst.profiles?.email || ''
+      const status = inst.profiles?.status || 'active'
       list.push({
         id: inst.id,
         profile_id: inst.profile_id,
+        employee_no: inst.employee_no,
         name,
         email,
         role: 'instructor',
-        status: inst.profiles?.status || 'active',
+        status,
+        password: inst.profiles?.password_plain || 'password123',
       })
-      seenIds.add(inst.id)
-      if (inst.profile_id) seenIds.add(inst.profile_id)
+      seenInstIds.add(inst.id)
+      if (inst.profile_id) seenProfileIds.add(inst.profile_id)
     })
 
     users
-      .filter((u) => u.role === 'instructor' && u.status === 'active')
+      .filter((u) => u.role === 'instructor')
       .forEach((u) => {
-        if (!seenIds.has(u.id)) {
-          list.push(u)
-          seenIds.add(u.id)
+        if (!seenProfileIds.has(u.id) && !seenInstIds.has(u.id)) {
+          list.push({ ...u, profile_id: u.id })
+          seenProfileIds.add(u.id)
         }
       })
 
@@ -632,13 +890,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...row,
               prelim: sheetRow.prelim,
               midterm: sheetRow.midterm,
+              prefinal: sheetRow.prefinal,
               final: sheetRow.final,
             }
           : row
+        const student = students.find((s) => s.id === row.studentId)
+        const computed = computeGrade(enrichedRow)
+        if (student?.status === 'dropped') {
+          computed.status = 'Dropped'
+        }
         return {
           row: enrichedRow,
-          student: students.find((student) => student.id === row.studentId),
-          computed: computeGrade(enrichedRow),
+          sheetRow,
+          student,
+          computed,
         }
       }),
     [selectedGrades, students, detailedGradingSheets, selectedClass?.id],
@@ -664,28 +929,33 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const sheetRow = classSheets.find((s) => s.studentId === studentId)
           const baseRow = classGrades.find((g) => g.studentId === studentId) ?? {
             studentId,
-            quizzes: 84,
-            assignments: 85,
-            activities: 85,
-            midtermExam: 84,
-            finalExam: 86,
-            historical: 84,
+            quizzes: 0,
+            assignments: 0,
+            activities: 0,
+            midtermExam: 0,
+            finalExam: 0,
+            historical: 0,
           }
           const row: GradeRow = sheetRow
             ? {
                 ...baseRow,
                 prelim: sheetRow.prelim,
                 midterm: sheetRow.midterm,
+                prefinal: sheetRow.prefinal,
                 final: sheetRow.final,
               }
             : baseRow
           const student = students.find((s) => s.id === studentId)
+          const computed = computeGrade(row)
+          if (student?.status === 'dropped') {
+            computed.status = 'Dropped'
+          }
           return {
             classItem,
             row,
             sheetRow,
             student,
-            computed: computeGrade(row),
+            computed,
           }
         })
       }),
@@ -702,20 +972,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [allComputedRows],
   )
 
-  const averagePerformance = useMemo(
-    () =>
-      allComputedRows.length > 0
-        ? Math.round(
-            allComputedRows.reduce((sum, item) => sum + item.computed.overall, 0) /
-              allComputedRows.length,
-          )
-        : 0,
-    [allComputedRows],
-  )
+  const averagePerformance = useMemo(() => {
+    const encodedRows = allComputedRows.filter((item) => item.computed.overall > 0)
+    return encodedRows.length > 0
+      ? Math.round(
+          encodedRows.reduce((sum, item) => sum + item.computed.overall, 0) / encodedRows.length,
+        )
+      : 0
+  }, [allComputedRows])
 
   const filteredStudents = useMemo(
-    () =>
-      students.filter((student) =>
+    () => {
+      const q = (studentQuery || searchTerm || '').toLowerCase()
+      if (!q) return students
+      return students.filter((student) =>
         [
           student.name,
           student.student_no,
@@ -724,14 +994,111 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           student.section_label,
           formatCourseSection(student.course, student.section_label),
           student.email,
+          student.status,
         ]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
-          .includes(searchTerm.toLowerCase()),
-      ),
-    [students, searchTerm],
+          .includes(q),
+      )
+    },
+    [students, searchTerm, studentQuery],
   )
+
+  const filteredSubjects = useMemo(
+    () => {
+      const q = (subjectQuery || '').toLowerCase()
+      if (!q) return subjects
+      return subjects.filter((s) =>
+        [s.code, s.title, s.units]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(q),
+      )
+    },
+    [subjects, subjectQuery],
+  )
+
+  // Helper to persist a student's grading sheet + summary + prediction basis to Supabase
+  function syncStudentSheetToSupabase(
+    classId: string,
+    studentId: string,
+    sheetRow: DetailedGradingSheet,
+    changedPeriod?: GradingPeriodKey,
+    changedField?: TermComponentField,
+    changedScore?: number,
+  ) {
+    if (!isUuid(classId) || !isUuid(studentId)) return
+
+    if (changedPeriod && changedField && typeof changedScore === 'number') {
+      const dbPeriod: 'Preliminary' | 'Midterm' | 'Final' =
+        changedPeriod === 'midterm'
+          ? 'Midterm'
+          : changedPeriod === 'final' || changedPeriod === 'prefinal'
+          ? 'Final'
+          : 'Preliminary'
+
+      const compMeta: Record<TermComponentField, { name: string; weight: number }> = {
+        attendance: { name: 'Attendance', weight: weightsConfig.attendance },
+        quiz: { name: 'Quiz', weight: weightsConfig.quiz },
+        activity: { name: 'Activity', weight: weightsConfig.activity },
+        participation: { name: 'Participation', weight: weightsConfig.participation },
+        exam: { name: 'Exam', weight: weightsConfig.exam },
+        labActivity: { name: 'Lab Activity', weight: 20 },
+      }
+      const baseMeta = compMeta[changedField] || { name: 'Activity', weight: 20 }
+      const componentName =
+        changedPeriod === 'prefinal' ? `PreFinal:${baseMeta.name}` : baseMeta.name
+
+      dbGrades
+        .upsertComponentScore({
+          classId,
+          studentId,
+          gradingPeriod: dbPeriod,
+          componentName,
+          weight: baseMeta.weight,
+          score: changedScore,
+        })
+        .catch((err) => console.warn('Supabase component score sync notice:', err))
+    }
+
+    dbGradeSummaries
+      .upsert({
+        class_id: classId,
+        student_id: studentId,
+        preliminary_grade: isTermEncoded(sheetRow.prelim) ? sheetRow.prelim.computedTermGrade : undefined,
+        midterm_grade: isTermEncoded(sheetRow.midterm) ? sheetRow.midterm.computedTermGrade : undefined,
+        final_grade: isTermEncoded(sheetRow.final)
+          ? sheetRow.final.computedTermGrade
+          : isTermEncoded(sheetRow.prefinal)
+          ? sheetRow.prefinal?.computedTermGrade
+          : undefined,
+        overall_grade: sheetRow.average > 0 ? sheetRow.average : undefined,
+        remarks: sheetRow.status,
+        computed_at: new Date().toISOString(),
+      })
+      .catch((err) => console.warn('Supabase grade summary sync notice:', err))
+
+    dbPredictions
+      .upsert({
+        class_id: classId,
+        student_id: studentId,
+        status: sheetRow.status,
+        confidence: sheetRow.average > 0 ? 90 : 0,
+        current_grade: sheetRow.average > 0 ? sheetRow.average : undefined,
+        predicted_grade: sheetRow.average > 0 ? sheetRow.average : undefined,
+        basis: {
+          prelim: sheetRow.prelim,
+          midterm: sheetRow.midterm,
+          prefinal: sheetRow.prefinal,
+          final: sheetRow.final,
+          submittedToAdmin: sheetRow.submittedToAdmin || false,
+          submittedAt: sheetRow.submittedAt || null,
+        },
+      })
+      .catch((err) => console.warn('Supabase prediction basis sync notice:', err))
+  }
 
   // Database operations
   async function handleSaveUser(event: React.FormEvent) {
@@ -741,38 +1108,90 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const formattedUser = {
         ...userForm,
+        name: userForm.name.trim(),
         email: userForm.email.trim().toLowerCase(),
       }
+      const nameParts = formattedUser.name.split(' ')
+      const firstName = nameParts[0] || 'Instructor'
+      const lastName = nameParts.slice(1).join(' ') || ''
 
       if (editingUserId) {
+        const instMatch = dbInstructorsList.find(
+          (i: any) => i.id === editingUserId || i.profile_id === editingUserId,
+        )
+        const profileIdToUpdate = instMatch?.profile_id || editingUserId
+
+        if (isUuid(profileIdToUpdate)) {
+          await dbProfiles.update(profileIdToUpdate, {
+            email: formattedUser.email,
+            first_name: firstName,
+            last_name: lastName,
+            role: formattedUser.role,
+            status: formattedUser.status,
+            ...(formattedUser.password ? { password_plain: formattedUser.password } : {}),
+          })
+        }
+
         setUsers((current) =>
-          current.map((user) => (user.id === editingUserId ? { ...user, ...formattedUser } : user)),
+          current.map((user) =>
+            user.id === editingUserId || user.id === profileIdToUpdate
+              ? { ...user, ...formattedUser }
+              : user,
+          ),
+        )
+        setDbInstructorsList((current) =>
+          current.map((inst: any) =>
+            inst.id === editingUserId || inst.profile_id === profileIdToUpdate
+              ? {
+                  ...inst,
+                  profiles: {
+                    ...inst.profiles,
+                    first_name: firstName,
+                    last_name: lastName,
+                    email: formattedUser.email,
+                    status: formattedUser.status,
+                    password_plain: formattedUser.password || inst.profiles?.password_plain,
+                  },
+                }
+              : inst,
+          ),
         )
         addActivityLog(
           'Administrator',
           `Updated instructor account: ${formattedUser.name}`,
           'Instructor Management',
         )
-        try {
-          const nameParts = formattedUser.name.split(' ')
-          await dbProfiles.update(editingUserId, {
-            email: formattedUser.email,
-            first_name: nameParts[0] || '',
-            last_name: nameParts.slice(1).join(' ') || '',
-            role: formattedUser.role,
-            status: formattedUser.status,
-            password_plain: formattedUser.password || '',
-          })
-        } catch {}
       } else {
-        const newId = `user-${crypto.randomUUID().slice(0, 8)}`
+        const newProfile = await dbProfiles.create({
+          email: formattedUser.email,
+          password_plain: formattedUser.password || 'password123',
+          first_name: firstName,
+          last_name: lastName,
+          role: formattedUser.role,
+          status: formattedUser.status,
+        })
+
+        let createdInst: any = null
+        if (formattedUser.role === 'instructor') {
+          createdInst = await dbInstructors.create({
+            profile_id: newProfile.id,
+            employee_no: `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
+            department: undefined,
+          })
+          setDbInstructorsList((prev) => [
+            { ...createdInst, profiles: newProfile },
+            ...prev,
+          ])
+        }
+
         const newUser: User = {
-          id: newId,
+          id: newProfile.id,
+          profile_id: newProfile.id,
           name: formattedUser.name,
           email: formattedUser.email,
           role: formattedUser.role,
           status: formattedUser.status,
-          password: formattedUser.password,
+          password: formattedUser.password || 'password123',
         }
         setUsers((current) => [newUser, ...current])
         addActivityLog(
@@ -780,99 +1199,96 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           `Added new instructor: ${formattedUser.name}`,
           'Instructor Management',
         )
-        addNotification({
-          title: 'New instructor account created',
-          message: `Instructor account for ${formattedUser.name} was successfully created.`,
-          role: 'administrator',
-          category: 'user',
-        })
-
-        try {
-          const nameParts = formattedUser.name.split(' ')
-          const newProfile = await dbProfiles.create({
-            email: formattedUser.email,
-            password_plain: formattedUser.password || 'password123',
-            first_name: nameParts[0] || '',
-            last_name: nameParts.slice(1).join(' ') || '',
-            role: formattedUser.role,
-            status: formattedUser.status,
-          })
-          if (formattedUser.role === 'instructor') {
-            await dbInstructors.create({
-              profile_id: newProfile.id,
-              employee_no: `EMP-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
-              department: undefined,
-            })
-          }
-        } catch {}
       }
 
       setUserForm(blankUser)
       setEditingUserId(null)
     } catch (error) {
       console.error('Failed to save user:', error)
+      alert('Failed to save instructor: ' + (error instanceof Error ? error.message : String(error)))
     }
   }
 
   async function handleSaveStudent(event: React.FormEvent) {
     event.preventDefault()
-    const studentNo = studentForm.studentNo || studentForm.student_no
-    if (!studentNo || !studentForm.name) return
+    if (!studentForm.name) return
+    const studentNo = (
+      studentForm.studentNo ||
+      studentForm.student_no ||
+      `2026-${String(students.length + 1).padStart(3, '0')}`
+    ).trim()
 
-    const norm = normalizeCourseSection(studentForm.course, studentForm.section_label)
+    const norm = normalizeCourseSection(
+      studentForm.course,
+      studentForm.section_label,
+    )
+    const desiredStatus: UserStatus = studentForm.status || 'active'
+    const parsedYearLevel =
+      typeof studentForm.year === 'string' && studentForm.year
+        ? parseInt(studentForm.year, 10) || studentForm.year_level || 1
+        : studentForm.year_level || 1
 
     try {
       if (editingStudentId) {
         const existingStudent = students.find((s) => s.id === editingStudentId)
+        const wasDropped = existingStudent?.status === 'dropped'
+        const isNowDropped = desiredStatus === 'dropped'
+
         const updateData: Partial<Student> = {
           ...studentForm,
           student_no: studentNo,
           studentNo: studentNo,
           course: norm.course,
           section_label: norm.section_label,
-          year_level: studentForm.year_level || 1,
+          status: desiredStatus,
+          year_level: parsedYearLevel,
         }
+
+        if (isUuid(editingStudentId)) {
+          await dbStudents.update(editingStudentId, {
+            student_no: studentNo,
+            course: norm.course,
+            section_label: norm.section_label,
+            year_level: parsedYearLevel,
+          })
+        }
+
+        const profId = existingStudent?.profile_id || studentForm.profile_id
+        if (isUuid(profId)) {
+          const nameParts = (studentForm.name || '').trim().split(' ')
+          await dbProfiles.update(profId!, {
+            first_name: nameParts[0] || 'Student',
+            last_name: nameParts.slice(1).join(' ') || '',
+            status: desiredStatus,
+            ...(studentForm.email ? { email: studentForm.email.trim().toLowerCase() } : {}),
+            ...(studentForm.password ? { password_plain: studentForm.password } : {}),
+          })
+        }
+
         setStudents((current) =>
           current.map((student) =>
             student.id === editingStudentId ? { ...student, ...updateData } : student,
           ),
         )
-        // Also update corresponding user profile in users
         setUsers((current) =>
           current.map((u) =>
             u.id === editingStudentId ||
             u.id === existingStudent?.profile_id ||
             u.email === studentForm.email
-              ? { ...u, name: studentForm.name! }
+              ? { ...u, name: studentForm.name!, status: desiredStatus }
               : u,
           ),
         )
+
+        if (!wasDropped && isNowDropped && existingStudent) {
+          notifyInstructorsOfStudentDropOut(editingStudentId, studentForm.name, studentNo)
+        }
+
         addActivityLog(
           'Administrator',
-          `Updated student profile: ${studentForm.name} (${studentNo}) — ${norm.display}`,
+          `Updated student profile: ${studentForm.name} (${studentNo}) — ${norm.display} [${desiredStatus.toUpperCase()}]`,
           'Student Management',
         )
-
-        try {
-          await dbStudents.update(editingStudentId, {
-            student_no: studentNo,
-            course: norm.course,
-            section_label: norm.section_label,
-            year_level: studentForm.year_level || 1,
-          })
-          const profId = existingStudent?.profile_id || studentForm.profile_id
-          if (profId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(profId)) {
-            const nameParts = (studentForm.name || '').trim().split(' ')
-            await dbProfiles.update(profId, {
-              first_name: nameParts[0] || 'Student',
-              last_name: nameParts.slice(1).join(' ') || '',
-              ...(studentForm.email ? { email: studentForm.email.trim().toLowerCase() } : {}),
-              ...(studentForm.password ? { password_plain: studentForm.password } : {}),
-            })
-          }
-        } catch (err) {
-          console.warn('DB student update warning:', err)
-        }
       } else {
         const nameParts = (studentForm.name || '').trim().split(' ')
         const firstName = nameParts[0] || 'Student'
@@ -882,54 +1298,47 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           `${studentNo.toLowerCase().replace(/[^a-z0-9]/g, '')}@trackademic.edu`
         const passwordPlain = studentForm.password || 'password123'
 
-        let createdStudentId: string = crypto.randomUUID()
-        let createdProfileId: string = crypto.randomUUID()
+        const profile = await dbProfiles.create({
+          email: generatedEmail,
+          password_plain: passwordPlain,
+          first_name: firstName,
+          last_name: lastName,
+          role: 'student',
+          status: desiredStatus,
+        })
 
-        try {
-          const profile = await dbProfiles.create({
-            email: generatedEmail,
-            password_plain: passwordPlain,
-            first_name: firstName,
-            last_name: lastName,
-            role: 'student',
-            status: 'active',
-          })
-          createdProfileId = profile.id
-
-          const dbStud = await dbStudents.create({
-            profile_id: profile.id,
-            student_no: studentNo,
-            course: norm.course,
-            section_label: norm.section_label,
-            year_level: studentForm.year_level || 1,
-          })
-          createdStudentId = dbStud.id
-        } catch (dbErr) {
-          console.warn('DB student create warning, using fallback ID:', dbErr)
-        }
+        const dbStud = await dbStudents.create({
+          profile_id: profile.id,
+          student_no: studentNo,
+          course: norm.course,
+          section_label: norm.section_label,
+          year_level: parsedYearLevel,
+        })
 
         const newStudent: Student = {
-          id: createdStudentId,
-          profile_id: createdProfileId,
+          id: dbStud.id,
+          profile_id: profile.id,
           student_no: studentNo,
           studentNo: studentNo,
           name: studentForm.name.trim(),
           email: generatedEmail,
           course: norm.course,
           section_label: norm.section_label,
-          year_level: studentForm.year_level || 1,
-          created_at: new Date().toISOString(),
+          status: desiredStatus,
+          year_level: parsedYearLevel,
+          created_at: dbStud.created_at || new Date().toISOString(),
           password: passwordPlain,
         }
 
         setStudents((current) => [newStudent, ...current])
         setUsers((current) => [
           {
-            id: createdProfileId,
+            id: profile.id,
+            profile_id: profile.id,
             name: studentForm.name!.trim(),
             email: generatedEmail,
             role: 'student',
-            status: 'active',
+            status: desiredStatus,
             password: passwordPlain,
           },
           ...current,
@@ -940,24 +1349,127 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           `Registered new student: ${studentForm.name} (${studentNo}) in ${norm.display}`,
           'Student Management',
         )
-        addNotification({
-          title: 'New student registered',
-          message: `${studentForm.name} (ID: ${studentNo}) was enrolled in ${norm.display}.`,
-          role: 'administrator',
-          category: 'user',
-        })
       }
 
       setStudentForm(blankStudent)
       setEditingStudentId(null)
     } catch (error) {
       console.error('Failed to save student:', error)
+      alert('Failed to save student: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  function handleEditStudent(student: Student) {
+    setEditingStudentId(student.id)
+    setStudentForm({
+      ...student,
+      studentNo: student.student_no || student.studentNo || '',
+      student_no: student.student_no || student.studentNo || '',
+    })
+  }
+
+  function resetStudentForm() {
+    setStudentForm(blankStudent)
+    setEditingStudentId(null)
+  }
+
+  function notifyInstructorsOfStudentDropOut(
+    studentId: string,
+    studentName: string,
+    studentNo: string,
+  ) {
+    const enrolledClasses = classes.filter((c) => (c.studentIds || []).includes(studentId))
+    for (const cls of enrolledClasses) {
+      const subj = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+      const sectionName = cls.section?.name || 'Section'
+      const instProfileId = resolveInstructorProfileId(cls.instructor_id)
+      addNotification({
+        user_id: instProfileId,
+        role: 'instructor',
+        category: 'risk',
+        title: `Student Drop Out: ${studentName}`,
+        message: `${studentName} (ID: ${studentNo}) has dropped out from your class ${subj?.code || ''} - ${subj?.title || 'Class'} (${sectionName}).`,
+      })
+    }
+  }
+
+  async function toggleStudentDropOut(studentId: string) {
+    const target = students.find((s) => s.id === studentId)
+    if (!target) return
+
+    const nextStatus: UserStatus = target.status === 'dropped' ? 'active' : 'dropped'
+    try {
+      if (isUuid(target.profile_id)) {
+        await dbProfiles.update(target.profile_id, { status: nextStatus })
+      }
+      setStudents((prev) =>
+        prev.map((s) => (s.id === studentId ? { ...s, status: nextStatus } : s)),
+      )
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === target.profile_id || u.id === studentId ? { ...u, status: nextStatus } : u,
+        ),
+      )
+
+      // Update status in grading sheets
+      setDetailedGradingSheets((prev) => {
+        const next: Record<string, DetailedGradingSheet[]> = {}
+        for (const cid of Object.keys(prev)) {
+          next[cid] = (prev[cid] || []).map((row) => {
+            if (row.studentId !== studentId) return row
+            if (nextStatus === 'dropped') return { ...row, status: 'Dropped' }
+            const cls = classes.find((c) => c.id === cid)
+            return recalculateSheetGrades(row, Boolean(cls?.subject?.has_laboratory), weightsConfig)
+          })
+        }
+        return next
+      })
+
+      if (nextStatus === 'dropped') {
+        notifyInstructorsOfStudentDropOut(
+          studentId,
+          target.name || 'Student',
+          target.student_no || target.studentNo || 'N/A',
+        )
+        addActivityLog(
+          'Administrator',
+          `Marked student as Dropped Out: ${target.name} (${target.student_no})`,
+          'Student Management',
+        )
+      } else {
+        const enrolledClasses = classes.filter((c) => (c.studentIds || []).includes(studentId))
+        for (const cls of enrolledClasses) {
+          const subj = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+          const instProfileId = resolveInstructorProfileId(cls.instructor_id)
+          addNotification({
+            user_id: instProfileId,
+            role: 'instructor',
+            category: 'user',
+            title: `Student Reactivated: ${target.name}`,
+            message: `${target.name} (${target.student_no}) has been reactivated in ${subj?.code || ''} - ${subj?.title || 'Class'}.`,
+          })
+        }
+        addActivityLog(
+          'Administrator',
+          `Reactivated student: ${target.name} (${target.student_no})`,
+          'Student Management',
+        )
+      }
+    } catch (error) {
+      console.error('Failed to update student drop out status:', error)
     }
   }
 
   async function deleteStudent(studentId: string) {
     try {
       const studentToDelete = students.find((s) => s.id === studentId)
+      if (isUuid(studentId)) {
+        await dbStudents.delete(studentId).catch(() => {})
+      }
+      if (isUuid(studentToDelete?.profile_id)) {
+        await dbProfiles.delete(studentToDelete!.profile_id).catch(() => {})
+      }
+
       setStudents((current) => current.filter((s) => s.id !== studentId))
       setClasses((current) =>
         current.map((c) => ({
@@ -965,34 +1477,44 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           studentIds: (c.studentIds || []).filter((id) => id !== studentId),
         })),
       )
+      setDetailedGradingSheets((current) => {
+        const next: Record<string, DetailedGradingSheet[]> = {}
+        for (const classIdStr in current) {
+          next[classIdStr] = (current[classIdStr] || []).filter((g) => g.studentId !== studentId)
+        }
+        return next
+      })
       setGrades((current) => {
         const nextGrades: Record<string, GradeRow[]> = {}
         for (const classIdStr in current) {
-          nextGrades[classIdStr] = (current[classIdStr] || []).filter((g) => g.studentId !== studentId)
+          nextGrades[classIdStr] = (current[classIdStr] || []).filter(
+            (g) => g.studentId !== studentId,
+          )
         }
         return nextGrades
       })
 
       if (studentToDelete) {
-        addActivityLog('Administrator', `Removed student record: ${studentToDelete.name}`, 'Student Management')
+        addActivityLog(
+          'Administrator',
+          `Removed student record: ${studentToDelete.name}`,
+          'Student Management',
+        )
       }
-
-      try {
-        await dbStudents.delete(studentId)
-      } catch {}
     } catch (error) {
       console.error('Failed to delete student:', error)
     }
   }
 
-  // Enroll a student into multiple classes
+  // Enroll a student into multiple classes (with empty unencoded grades + instructor notifications)
   async function enrollStudentInClasses(studentId: string, classIds: string[]) {
     try {
       const studentObj = students.find((s) => s.id === studentId)
       const studentName = studentObj?.name || 'Student'
       const studentNo = studentObj?.student_no || studentObj?.studentNo || 'N/A'
 
-      // Update classes locally
+      await Promise.allSettled(classIds.map((classId) => dbClasses.addStudent(classId, studentId)))
+
       setClasses((current) =>
         current.map((c) =>
           classIds.includes(c.id)
@@ -1001,7 +1523,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ),
       )
 
-      // Initialize detailed grading sheets and grade rows for each class
       setDetailedGradingSheets((current) => {
         const next = { ...current }
         classIds.forEach((classId) => {
@@ -1009,7 +1530,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const hasLab = cls?.subject?.has_laboratory ?? false
           const sheet = next[classId] ?? []
           if (!sheet.some((s) => s.studentId === studentId)) {
-            const newEntry = createDefaultStudentSheet(studentId, studentName, studentNo, hasLab)
+            const newEntry = createEmptyStudentSheet(studentId, studentName, studentNo, hasLab)
             next[classId] = [...sheet, newEntry]
           }
         })
@@ -1023,21 +1544,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const hasLab = cls?.subject?.has_laboratory ?? false
           const rows = next[classId] ?? []
           if (!rows.some((r) => r.studentId === studentId)) {
-            const defaultSheet = createDefaultStudentSheet(studentId, studentName, studentNo, hasLab)
+            const emptySheet = createEmptyStudentSheet(studentId, studentName, studentNo, hasLab)
             next[classId] = [
               ...rows,
               {
                 studentId,
                 student_name: studentName,
-                quizzes: defaultSheet.prelim.quiz,
-                assignments: defaultSheet.prelim.activity,
-                activities: defaultSheet.prelim.activity,
-                midtermExam: defaultSheet.midterm.exam,
-                finalExam: defaultSheet.final.exam,
-                historical: Math.round(defaultSheet.prelim.computedTermGrade),
-                prelim: defaultSheet.prelim,
-                midterm: defaultSheet.midterm,
-                final: defaultSheet.final,
+                quizzes: 0,
+                assignments: 0,
+                activities: 0,
+                participation: 0,
+                midtermExam: 0,
+                finalExam: 0,
+                historical: 0,
+                prelim: emptySheet.prelim,
+                midterm: emptySheet.midterm,
+                prefinal: emptySheet.prefinal,
+                final: emptySheet.final,
               },
             ]
           }
@@ -1045,19 +1568,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next
       })
 
-      await Promise.allSettled(classIds.map((classId) => dbClasses.addStudent(classId, studentId)))
+      // Notify each assigned instructor that a student was enrolled in their subject
+      for (const cid of classIds) {
+        const cls = classes.find((c) => c.id === cid)
+        if (!cls) continue
+        const subj = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+        const instProfileId = resolveInstructorProfileId(cls.instructor_id)
+        addNotification({
+          user_id: instProfileId,
+          role: 'instructor',
+          category: 'user',
+          title: `New Student Enrolled: ${subj?.code || 'Class'}`,
+          message: `${studentName} (${studentNo}) has been enrolled in your class ${subj?.code || ''} - ${subj?.title || 'Subject'} (${cls.section?.name || 'Section'}).`,
+        })
+      }
 
       addActivityLog(
         'Administrator',
         `Enrolled student ${studentName} into ${classIds.length} class(es)`,
         'Student Management',
       )
-      addNotification({
-        title: 'Student enrollment updated',
-        message: `${studentName} was successfully enrolled into ${classIds.length} class(es).`,
-        role: 'administrator',
-        category: 'user',
-      })
     } catch (error) {
       console.error('Failed to enroll student in classes:', error)
     }
@@ -1067,11 +1597,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     event.preventDefault()
     if (!subjectForm.code || !subjectForm.title) return
 
+    const hasLab = Boolean(subjectForm.has_laboratory ?? subjectForm.hasLab)
+    const normalizedSubjectForm = {
+      ...subjectForm,
+      has_laboratory: hasLab,
+      hasLab,
+    }
+
     try {
       if (editingSubjectId) {
+        if (isUuid(editingSubjectId)) {
+          await dbSubjects.update(editingSubjectId, normalizedSubjectForm)
+        }
         setSubjects((current) =>
           current.map((subject) =>
-            subject.id === editingSubjectId ? { ...subject, ...subjectForm } : subject,
+            subject.id === editingSubjectId ? { ...subject, ...normalizedSubjectForm } : subject,
           ),
         )
         addActivityLog(
@@ -1079,36 +1619,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           `Updated curriculum subject: ${subjectForm.code} - ${subjectForm.title}`,
           'Subjects & Classes',
         )
-        try {
-          await dbSubjects.update(editingSubjectId, subjectForm)
-        } catch {}
       } else {
+        const created = await dbSubjects.create(normalizedSubjectForm)
         const newSubject: Subject = {
-          id: `subj-${crypto.randomUUID().slice(0, 8)}`,
-          ...subjectForm,
-          created_at: new Date().toISOString(),
+          ...normalizedSubjectForm,
+          ...created,
+          has_laboratory: hasLab,
+          hasLab,
         }
-        setSubjects((current) => [...current, newSubject])
+        setSubjects((current) => [newSubject, ...current])
         addActivityLog(
           'Administrator',
           `Added curriculum subject: ${newSubject.code} - ${newSubject.title}`,
           'Subjects & Classes',
         )
-        try {
-          await dbSubjects.create(subjectForm)
-        } catch {}
       }
 
       setSubjectForm(blankSubject)
       setEditingSubjectId(null)
     } catch (error) {
       console.error('Failed to save subject:', error)
+      alert('Failed to save subject: ' + (error instanceof Error ? error.message : String(error)))
     }
+  }
+
+  function handleEditSubject(subject: Subject) {
+    setEditingSubjectId(subject.id)
+    setSubjectForm({
+      ...subject,
+      has_laboratory: Boolean(subject.has_laboratory ?? subject.hasLab),
+      hasLab: Boolean(subject.has_laboratory ?? subject.hasLab),
+    })
+  }
+
+  function resetSubjectForm() {
+    setSubjectForm(blankSubject)
+    setEditingSubjectId(null)
   }
 
   async function deleteSubject(subjectId: string) {
     try {
       const subj = subjects.find((s) => s.id === subjectId)
+      if (isUuid(subjectId)) {
+        await dbSubjects.delete(subjectId)
+      }
       setSubjects((current) => current.filter((s) => s.id !== subjectId))
       if (subj) {
         addActivityLog(
@@ -1117,34 +1671,44 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'Subjects & Classes',
         )
       }
-      try {
-        await dbSubjects.delete(subjectId)
-      } catch {}
     } catch (error) {
       console.error('Failed to delete subject:', error)
+      alert(
+        'Cannot delete subject while classes are still assigned to it. Delete its classes first.',
+      )
     }
   }
 
-  async function createClass(classData: Omit<ClassRecord, 'id' | 'created_at'>): Promise<ClassRecord> {
+  async function createClass(
+    classData: Omit<ClassRecord, 'id' | 'created_at'>,
+  ): Promise<ClassRecord> {
     try {
-      const newClassId = `class-${crypto.randomUUID().slice(0, 8)}`
+      const createdDbClass = await dbClasses.create(classData, classData.studentIds)
+      const realClassId = createdDbClass.id
       const subject = subjects.find((s) => s.id === classData.subject_id)
-      const instructor = users.find((u) => u.id === classData.instructor_id)
+      const instructor = instructors.find(
+        (u) => u.id === classData.instructor_id || u.profile_id === classData.instructor_id,
+      )
       const hasLab = subject?.has_laboratory ?? false
 
       const newClass: ClassRecord = {
         ...classData,
-        id: newClassId,
-        created_at: new Date().toISOString(),
+        id: realClassId,
+        created_at: createdDbClass.created_at || new Date().toISOString(),
         subject,
         instructor: instructor as any,
       }
 
-      setClasses((current) => [...current, newClass])
+      setClasses((current) => [newClass, ...current])
+      if (newClass.section && isUuid(newClass.section.id)) {
+        setSections((prev) =>
+          prev.some((s) => s.id === newClass.section!.id) ? prev : [newClass.section!, ...prev],
+        )
+      }
 
       const initialSheetRows = (classData.studentIds || []).map((studentId) => {
         const st = students.find((s) => s.id === studentId)
-        return createDefaultStudentSheet(
+        return createEmptyStudentSheet(
           studentId,
           st?.name || 'Student',
           st?.student_no || st?.studentNo || 'N/A',
@@ -1154,39 +1718,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setDetailedGradingSheets((current) => ({
         ...current,
-        [newClass.id]: initialSheetRows,
+        [realClassId]: initialSheetRows,
       }))
 
       setGrades((current) => ({
         ...current,
-        [newClass.id]: initialSheetRows.map((sr) => ({
+        [realClassId]: initialSheetRows.map((sr) => ({
           studentId: sr.studentId,
           student_name: sr.studentName,
-          quizzes: sr.prelim.quiz,
-          assignments: sr.prelim.activity,
-          activities: sr.prelim.activity,
-          midtermExam: sr.midterm.exam,
-          finalExam: sr.final.exam,
-          historical: Math.round(sr.prelim.computedTermGrade),
+          quizzes: 0,
+          assignments: 0,
+          activities: 0,
+          participation: 0,
+          midtermExam: 0,
+          finalExam: 0,
+          historical: 0,
           prelim: sr.prelim,
           midterm: sr.midterm,
+          prefinal: sr.prefinal,
           final: sr.final,
         })),
       }))
 
       if (!selectedClassId) {
-        setSelectedClassId(newClass.id)
+        setSelectedClassId(realClassId)
+      }
+
+      const sectionLabel = classData.section?.name || 'Section'
+      const instProfileId = resolveInstructorProfileId(classData.instructor_id)
+
+      // 1. Notify the assigned instructor that a new subject/class was added to them
+      addNotification({
+        user_id: instProfileId,
+        role: 'instructor',
+        category: 'system',
+        title: `New Class Assigned: ${subject?.code || 'Subject'} (${sectionLabel})`,
+        message: `Admin assigned you to teach ${subject?.code || ''} - ${subject?.title || 'Subject'} for ${sectionLabel} (${classData.schedule || 'TBA'}, ${classData.room || 'TBA'}).`,
+      })
+
+      // 2. If students were enrolled in this class, notify the instructor of the enrolled students
+      if ((classData.studentIds || []).length > 0) {
+        addNotification({
+          user_id: instProfileId,
+          role: 'instructor',
+          category: 'user',
+          title: `Students Enrolled in ${subject?.code || 'Class'} (${sectionLabel})`,
+          message: `${(classData.studentIds || []).length} student(s) have been enrolled in your class ${subject?.code || ''} - ${subject?.title || 'Subject'} (${sectionLabel}).`,
+        })
       }
 
       addActivityLog(
         'Administrator',
-        `Created class: ${subject?.title || 'Subject'} (${classData.section?.name || 'CIT A'}) with instructor ${instructor?.name || 'Assigned'}`,
+        `Created class: ${subject?.title || 'Subject'} (${sectionLabel}) with instructor ${instructor?.name || 'Assigned'}`,
         'Subjects & Classes',
       )
-
-      try {
-        await dbClasses.create(classData, classData.studentIds)
-      } catch {}
 
       return newClass
     } catch (error) {
@@ -1197,12 +1782,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   async function updateClass(classId: string, classData: Partial<ClassRecord>) {
     try {
-      setClasses((current) => current.map((c) => (c.id === classId ? { ...c, ...classData } : c)))
+      const existingClass = classes.find((c) => c.id === classId)
+      const prevStudentIds = existingClass?.studentIds || []
+      const prevInstructorId = existingClass?.instructor_id
+
+      if (isUuid(classId)) {
+        await dbClasses.update(classId, classData)
+      }
+
+      const subject =
+        subjects.find((s) => s.id === (classData.subject_id || existingClass?.subject_id)) ||
+        existingClass?.subject
+      const instructor = instructors.find(
+        (u) =>
+          u.id === (classData.instructor_id || existingClass?.instructor_id) ||
+          u.profile_id === (classData.instructor_id || existingClass?.instructor_id),
+      )
+
+      setClasses((current) =>
+        current.map((c) =>
+          c.id === classId
+            ? {
+                ...c,
+                ...classData,
+                subject,
+                instructor: (instructor as any) || c.instructor,
+              }
+            : c,
+        ),
+      )
 
       if (Array.isArray(classData.studentIds)) {
         const newStudentIds = classData.studentIds
-        const cls = classes.find((c) => c.id === classId)
-        const hasLab = cls?.subject?.has_laboratory ?? false
+        const hasLab = subject?.has_laboratory ?? false
 
         setDetailedGradingSheets((current) => {
           const classSheet = current[classId] ?? []
@@ -1213,7 +1825,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (!existingIds.has(sid)) {
               const st = students.find((s) => s.id === sid)
               updatedSheet.push(
-                createDefaultStudentSheet(
+                createEmptyStudentSheet(
                   sid,
                   st?.name || 'Student',
                   st?.student_no || st?.studentNo || 'N/A',
@@ -1233,7 +1845,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           for (const sid of newStudentIds) {
             if (!existingIds.has(sid)) {
               const st = students.find((s) => s.id === sid)
-              const defaultSheet = createDefaultStudentSheet(
+              const emptySheet = createEmptyStudentSheet(
                 sid,
                 st?.name || 'Student',
                 st?.student_no || st?.studentNo || 'N/A',
@@ -1242,28 +1854,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               updatedGrades.push({
                 studentId: sid,
                 student_name: st?.name || 'Student',
-                quizzes: defaultSheet.prelim.quiz,
-                assignments: defaultSheet.prelim.activity,
-                activities: defaultSheet.prelim.activity,
-                midtermExam: defaultSheet.midterm.exam,
-                finalExam: defaultSheet.final.exam,
-                historical: Math.round(defaultSheet.prelim.computedTermGrade),
-                prelim: defaultSheet.prelim,
-                midterm: defaultSheet.midterm,
-                final: defaultSheet.final,
+                quizzes: 0,
+                assignments: 0,
+                activities: 0,
+                participation: 0,
+                midtermExam: 0,
+                finalExam: 0,
+                historical: 0,
+                prelim: emptySheet.prelim,
+                midterm: emptySheet.midterm,
+                prefinal: emptySheet.prefinal,
+                final: emptySheet.final,
               })
             }
           }
           return { ...current, [classId]: updatedGrades }
         })
+
+        const newlyAddedStudents = newStudentIds.filter((id) => !prevStudentIds.includes(id))
+        const targetInstructorId = classData.instructor_id || existingClass?.instructor_id
+        const instProfileId = resolveInstructorProfileId(targetInstructorId)
+        const sectionName = classData.section?.name || existingClass?.section?.name || 'Section'
+
+        if (classData.instructor_id && classData.instructor_id !== prevInstructorId) {
+          addNotification({
+            user_id: instProfileId,
+            role: 'instructor',
+            category: 'system',
+            title: `New Class Assigned: ${subject?.code || 'Subject'} (${sectionName})`,
+            message: `Admin assigned you to teach ${subject?.code || ''} - ${subject?.title || 'Subject'} (${sectionName}).`,
+          })
+        }
+
+        if (newlyAddedStudents.length > 0) {
+          addNotification({
+            user_id: instProfileId,
+            role: 'instructor',
+            category: 'user',
+            title: `New Student(s) Enrolled: ${subject?.code || 'Class'}`,
+            message: `${newlyAddedStudents.length} new student(s) enrolled in ${subject?.code || ''} - ${subject?.title || 'Subject'} (${sectionName}).`,
+          })
+        }
       }
 
       addActivityLog('Administrator', `Updated class record and assignments`, 'Subjects & Classes')
-      try {
-        await dbClasses.update(classId, classData)
-      } catch (err) {
-        console.warn('DB class update fallback:', err)
-      }
     } catch (error) {
       console.error('Failed to update class:', error)
     }
@@ -1272,7 +1906,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   async function deleteClass(classId: string) {
     try {
       const cls = classes.find((c) => c.id === classId)
+      if (isUuid(classId)) {
+        await dbClasses.delete(classId)
+      }
       setClasses((current) => current.filter((c) => c.id !== classId))
+      setDetailedGradingSheets((current) => {
+        const next = { ...current }
+        delete next[classId]
+        return next
+      })
       setGrades((current) => {
         const next = { ...current }
         delete next[classId]
@@ -1289,9 +1931,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           'Subjects & Classes',
         )
       }
-      try {
-        await dbClasses.delete(classId)
-      } catch {}
     } catch (error) {
       console.error('Failed to delete class:', error)
     }
@@ -1299,25 +1938,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   async function createClassFromSubject(subject: Subject) {
     try {
-      const defaultInstructor = instructors[0]?.id ?? users[1]?.id ?? ''
-      const enrolledStudents = students.slice(0, 5).map((s) => s.id)
+      const defaultInstructor = instructors[0]?.id ?? ''
+      const section = await dbSections.create({
+        name: 'BSIT 1A',
+        course: 'BSIT',
+        year_level: 1,
+        school_year: settings.schoolYear,
+        semester: settings.semester,
+      })
 
       await createClass({
         subject_id: subject.id,
-        section_id: 'sec-gen',
+        section_id: section.id,
         instructor_id: defaultInstructor,
         room: `Room ${201 + classes.length}`,
         schedule: 'MWF 10:00 AM - 11:30 AM',
-        studentIds: enrolledStudents,
-        section: {
-          id: 'sec-gen',
-          name: 'CIT A',
-          course: 'CIT',
-          year_level: 1,
-          school_year: settings.schoolYear,
-          semester: settings.semester,
-          created_at: new Date().toISOString(),
-        },
+        studentIds: [],
+        section,
       })
     } catch (error) {
       console.error('Failed to create class from subject:', error)
@@ -1361,6 +1998,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       period =
         periodOrField === 'midterm'
           ? 'midterm'
+          : periodOrField === 'prefinal'
+          ? 'prefinal'
           : periodOrField === 'final'
           ? 'final'
           : 'prelim'
@@ -1370,6 +2009,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? 'attendance'
           : rawField === 'quiz'
           ? 'quiz'
+          : rawField === 'participation'
+          ? 'participation'
           : rawField === 'labActivity' || rawField === 'labExam'
           ? 'labActivity'
           : rawField === 'activity' || rawField === 'activities'
@@ -1377,11 +2018,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           : 'exam'
       numericValue = valueOptional
     } else {
-      // Legacy 4-arg call compatibility
       numericValue = Number(fieldOrValue)
       const rawField = String(periodOrField)
       if (rawField === 'midterm') {
         period = 'midterm'
+        field = 'exam'
+      } else if (rawField === 'prefinal') {
+        period = 'prefinal'
         field = 'exam'
       } else if (rawField === 'final') {
         period = 'final'
@@ -1393,6 +2036,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? 'attendance'
             : rawField === 'quiz'
             ? 'quiz'
+            : rawField === 'participation'
+            ? 'participation'
             : rawField === 'labExam' || rawField === 'labActivity'
             ? 'labActivity'
             : rawField === 'activity' || rawField === 'activities'
@@ -1410,7 +2055,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? classSheet
         : [
             ...classSheet,
-            createDefaultStudentSheet(
+            createEmptyStudentSheet(
               studentId,
               students.find((s) => s.id === studentId)?.name || 'Student',
               students.find((s) => s.id === studentId)?.student_no || 'N/A',
@@ -1421,64 +2066,58 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedSheet = baseSheet.map((item) => {
         if (item.studentId !== studentId) return item
 
-        const currentPrelim = ensureTermScores(item.prelim, 82, hasLab)
-        const currentMidterm = ensureTermScores(item.midterm, 83, hasLab)
-        const currentFinal = ensureTermScores(item.final, 85, hasLab)
+        const currentPrelim = ensureTermScores(item.prelim, 0, hasLab)
+        const currentMidterm = ensureTermScores(item.midterm, 0, hasLab)
+        const currentPrefinal = ensureTermScores(item.prefinal, 0, hasLab)
+        const currentFinal = ensureTermScores(item.final, 0, hasLab)
 
         const targetTerm =
           period === 'prelim'
             ? currentPrelim
             : period === 'midterm'
             ? currentMidterm
+            : period === 'prefinal'
+            ? currentPrefinal
             : currentFinal
+
+        const existingItems = targetTerm.items || {
+          attendance: [0],
+          quiz: [0],
+          activity: [0],
+          participation: [0],
+          exam: [0],
+          labActivity: hasLab ? [0] : [],
+        }
 
         const updatedTerm: DetailedTermScores = {
           ...targetTerm,
           [field]: numericValue,
+          hasData: true,
+          items: {
+            ...existingItems,
+            [field]: [numericValue],
+          },
           ...(field === 'activity' ? { activities: numericValue } : {}),
           ...(field === 'labActivity' ? { labExam: numericValue } : {}),
         }
-        updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
 
-        const nextPrelim = period === 'prelim' ? updatedTerm : currentPrelim
-        const nextMidterm = period === 'midterm' ? updatedTerm : currentMidterm
-        const nextFinal = period === 'final' ? updatedTerm : currentFinal
-
-        const newAverage = computeOverallFromTerms(
-          nextPrelim.computedTermGrade,
-          nextMidterm.computedTermGrade,
-          nextFinal.computedTermGrade,
-        )
-
-        let status: any = 'On Track'
-        if (newAverage >= 90) status = 'Excellent'
-        else if (newAverage >= 85) status = 'Good'
-        else if (newAverage >= 75) status = 'On Track'
-        else if (newAverage >= 70) status = 'At Risk'
-        else status = 'Bound to Fail'
-
-        const updatedItem: DetailedGradingSheet = {
+        const nextSheet: DetailedGradingSheet = {
           ...item,
-          prelim: nextPrelim,
-          midterm: nextMidterm,
-          final: nextFinal,
-          prelimExam: nextPrelim.exam,
-          quiz: nextPrelim.quiz,
-          activity: nextPrelim.activity,
-          attendance: nextPrelim.attendance,
-          labExam: nextPrelim.labActivity,
-          average: newAverage,
-          status,
+          prelim: period === 'prelim' ? updatedTerm : currentPrelim,
+          midterm: period === 'midterm' ? updatedTerm : currentMidterm,
+          prefinal: period === 'prefinal' ? updatedTerm : currentPrefinal,
+          final: period === 'final' ? updatedTerm : currentFinal,
         }
 
-        updatedRowRef = updatedItem
-        return updatedItem
+        const recalculated = recalculateSheetGrades(nextSheet, hasLab, weightsConfig)
+        updatedRowRef = recalculated
+        return recalculated
       })
 
       return { ...current, [classId]: updatedSheet }
     })
 
-    // Sync with main GradeRow so summary/analytics stay 100% consistent
+    // Sync with main GradeRow
     setGrades((current) => {
       const existing = current[classId] ?? []
       const updated = existing.map((row) => {
@@ -1488,58 +2127,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           quizzes: updatedRowRef.prelim.quiz,
           activities: updatedRowRef.prelim.activity,
           attendance: updatedRowRef.prelim.attendance,
+          participation: updatedRowRef.prelim.participation,
           labExam: updatedRowRef.prelim.labActivity ?? undefined,
           midtermExam: updatedRowRef.midterm.exam,
           finalExam: updatedRowRef.final.exam,
           prelim: updatedRowRef.prelim,
           midterm: updatedRowRef.midterm,
+          prefinal: updatedRowRef.prefinal,
           final: updatedRowRef.final,
         }
       })
       return { ...current, [classId]: updated }
     })
 
-    // Persist to Supabase if valid UUIDs
-    const isUuid = (val: string) =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
-    if (isUuid(classId) && isUuid(studentId)) {
-      const dbPeriod: 'Preliminary' | 'Midterm' | 'Final' =
-        period === 'midterm' ? 'Midterm' : period === 'final' ? 'Final' : 'Preliminary'
-      const compMeta: Record<TermComponentField, { name: string; weight: number }> = {
-        attendance: { name: 'Attendance', weight: 10 },
-        quiz: { name: 'Quiz', weight: hasLab ? 20 : 25 },
-        labActivity: { name: 'Lab Activity', weight: 20 },
-        activity: { name: 'Activity', weight: hasLab ? 10 : 25 },
-        exam: { name: 'Exam', weight: 40 },
-      }
-      const { name: componentName, weight } = compMeta[field]
-
-      dbGrades
-        .upsertComponentScore({
-          classId,
-          studentId,
-          gradingPeriod: dbPeriod,
-          componentName,
-          weight,
-          score: numericValue,
-        })
-        .catch((err) => console.warn('Supabase component score sync notice:', err))
-
-      if (updatedRowRef) {
-        const rowSnapshot = updatedRowRef as DetailedGradingSheet
-        dbGradeSummaries
-          .upsert({
-            class_id: classId,
-            student_id: studentId,
-            preliminary_grade: rowSnapshot.prelim.computedTermGrade,
-            midterm_grade: rowSnapshot.midterm.computedTermGrade,
-            final_grade: rowSnapshot.final.computedTermGrade,
-            overall_grade: rowSnapshot.average,
-            remarks: rowSnapshot.status,
-            computed_at: new Date().toISOString(),
-          })
-          .catch((err) => console.warn('Supabase grade summary sync notice:', err))
-      }
+    if (updatedRowRef) {
+      syncStudentSheetToSupabase(classId, studentId, updatedRowRef, period, field, numericValue)
     }
   }
 
@@ -1569,7 +2171,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ? classSheet
         : [
             ...classSheet,
-            createDefaultStudentSheet(
+            createEmptyStudentSheet(
               studentId,
               students.find((s) => s.id === studentId)?.name || 'Student',
               students.find((s) => s.id === studentId)?.student_no || 'N/A',
@@ -1580,28 +2182,32 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedSheet = baseSheet.map((item) => {
         if (item.studentId !== studentId) return item
 
-        const currentPrelim = ensureTermScores(item.prelim, 82, hasLab)
-        const currentMidterm = ensureTermScores(item.midterm, 83, hasLab)
-        const currentFinal = ensureTermScores(item.final, 85, hasLab)
+        const currentPrelim = ensureTermScores(item.prelim, 0, hasLab)
+        const currentMidterm = ensureTermScores(item.midterm, 0, hasLab)
+        const currentPrefinal = ensureTermScores(item.prefinal, 0, hasLab)
+        const currentFinal = ensureTermScores(item.final, 0, hasLab)
 
         const targetTerm =
           period === 'prelim'
             ? currentPrelim
             : period === 'midterm'
             ? currentMidterm
+            : period === 'prefinal'
+            ? currentPrefinal
             : currentFinal
 
         const existingItems = targetTerm.items || {
-          attendance: [targetTerm.attendance],
-          quiz: [targetTerm.quiz],
-          labActivity: hasLab ? [targetTerm.labActivity ?? 85] : [],
-          activity: [targetTerm.activity],
-          exam: [targetTerm.exam],
+          attendance: [0],
+          quiz: [0],
+          activity: [0],
+          participation: [0],
+          exam: [0],
+          labActivity: hasLab ? [0] : [],
         }
 
-        const currentFieldArr = [...(existingItems[field] || [])]
+        const currentFieldArr = [...(existingItems[field] || [0])]
         while (currentFieldArr.length <= itemIndex) {
-          currentFieldArr.push(80)
+          currentFieldArr.push(0)
         }
         currentFieldArr[itemIndex] = value
 
@@ -1612,15 +2218,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const nextAttendance = computeItemsAverage(updatedItems.attendance)
         const nextQuiz = computeItemsAverage(updatedItems.quiz)
-        const nextLab = hasLab ? computeItemsAverage(updatedItems.labActivity) : null
         const nextActivity = computeItemsAverage(updatedItems.activity)
+        const nextParticipation = computeItemsAverage(updatedItems.participation)
         const nextExam = computeItemsAverage(updatedItems.exam)
+        const nextLab = hasLab ? computeItemsAverage(updatedItems.labActivity || [0]) : null
 
         newCategoryAverage =
           field === 'attendance'
             ? nextAttendance
             : field === 'quiz'
             ? nextQuiz
+            : field === 'participation'
+            ? nextParticipation
             : field === 'labActivity'
             ? nextLab ?? 0
             : field === 'activity'
@@ -1631,49 +2240,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ...targetTerm,
           attendance: nextAttendance,
           quiz: nextQuiz,
-          labActivity: nextLab,
           activity: nextActivity,
+          participation: nextParticipation,
           exam: nextExam,
+          labActivity: nextLab,
           items: updatedItems,
           activities: nextActivity,
           labExam: nextLab,
+          hasData: true,
           computedTermGrade: 0,
         }
-        updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
 
-        const nextPrelim = period === 'prelim' ? updatedTerm : currentPrelim
-        const nextMidterm = period === 'midterm' ? updatedTerm : currentMidterm
-        const nextFinal = period === 'final' ? updatedTerm : currentFinal
-
-        const newAverage = computeOverallFromTerms(
-          nextPrelim.computedTermGrade,
-          nextMidterm.computedTermGrade,
-          nextFinal.computedTermGrade,
-        )
-
-        let status: any = 'On Track'
-        if (newAverage >= 90) status = 'Excellent'
-        else if (newAverage >= 85) status = 'Good'
-        else if (newAverage >= 75) status = 'On Track'
-        else if (newAverage >= 70) status = 'At Risk'
-        else status = 'Bound to Fail'
-
-        const updatedItem: DetailedGradingSheet = {
+        const nextSheet: DetailedGradingSheet = {
           ...item,
-          prelim: nextPrelim,
-          midterm: nextMidterm,
-          final: nextFinal,
-          prelimExam: nextPrelim.exam,
-          quiz: nextPrelim.quiz,
-          activity: nextPrelim.activity,
-          attendance: nextPrelim.attendance,
-          labExam: nextPrelim.labActivity,
-          average: newAverage,
-          status,
+          prelim: period === 'prelim' ? updatedTerm : currentPrelim,
+          midterm: period === 'midterm' ? updatedTerm : currentMidterm,
+          prefinal: period === 'prefinal' ? updatedTerm : currentPrefinal,
+          final: period === 'final' ? updatedTerm : currentFinal,
         }
 
-        updatedRowRef = updatedItem
-        return updatedItem
+        const recalculated = recalculateSheetGrades(nextSheet, hasLab, weightsConfig)
+        updatedRowRef = recalculated
+        return recalculated
       })
 
       return { ...current, [classId]: updatedSheet }
@@ -1689,58 +2277,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           quizzes: updatedRowRef.prelim.quiz,
           activities: updatedRowRef.prelim.activity,
           attendance: updatedRowRef.prelim.attendance,
+          participation: updatedRowRef.prelim.participation,
           labExam: updatedRowRef.prelim.labActivity ?? undefined,
           midtermExam: updatedRowRef.midterm.exam,
           finalExam: updatedRowRef.final.exam,
           prelim: updatedRowRef.prelim,
           midterm: updatedRowRef.midterm,
+          prefinal: updatedRowRef.prefinal,
           final: updatedRowRef.final,
         }
       })
       return { ...current, [classId]: updated }
     })
 
-    // Persist computed category average & term summary to Supabase if valid UUIDs
-    const isUuid = (val: string) =>
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)
-    if (isUuid(classId) && isUuid(studentId)) {
-      const dbPeriod: 'Preliminary' | 'Midterm' | 'Final' =
-        period === 'midterm' ? 'Midterm' : period === 'final' ? 'Final' : 'Preliminary'
-      const compMeta: Record<TermComponentField, { name: string; weight: number }> = {
-        attendance: { name: 'Attendance', weight: 10 },
-        quiz: { name: 'Quiz', weight: hasLab ? 20 : 25 },
-        labActivity: { name: 'Lab Activity', weight: 20 },
-        activity: { name: 'Activity', weight: hasLab ? 10 : 25 },
-        exam: { name: 'Exam', weight: 40 },
-      }
-      const { name: componentName, weight } = compMeta[field]
-
-      dbGrades
-        .upsertComponentScore({
-          classId,
-          studentId,
-          gradingPeriod: dbPeriod,
-          componentName,
-          weight,
-          score: newCategoryAverage,
-        })
-        .catch((err) => console.warn('Supabase component score sync notice:', err))
-
-      if (updatedRowRef) {
-        const rowSnapshot = updatedRowRef as DetailedGradingSheet
-        dbGradeSummaries
-          .upsert({
-            class_id: classId,
-            student_id: studentId,
-            preliminary_grade: rowSnapshot.prelim.computedTermGrade,
-            midterm_grade: rowSnapshot.midterm.computedTermGrade,
-            final_grade: rowSnapshot.final.computedTermGrade,
-            overall_grade: rowSnapshot.average,
-            remarks: rowSnapshot.status,
-            computed_at: new Date().toISOString(),
-          })
-          .catch((err) => console.warn('Supabase grade summary sync notice:', err))
-      }
+    if (updatedRowRef) {
+      syncStudentSheetToSupabase(
+        classId,
+        studentId,
+        updatedRowRef,
+        period,
+        field,
+        newCategoryAverage,
+      )
     }
   }
 
@@ -1756,74 +2314,52 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDetailedGradingSheets((current) => {
       const classSheet = current[classId] ?? []
       const updatedSheet = classSheet.map((item) => {
-        const currentPrelim = ensureTermScores(item.prelim, 82, hasLab)
-        const currentMidterm = ensureTermScores(item.midterm, 83, hasLab)
-        const currentFinal = ensureTermScores(item.final, 85, hasLab)
+        const currentPrelim = ensureTermScores(item.prelim, 0, hasLab)
+        const currentMidterm = ensureTermScores(item.midterm, 0, hasLab)
+        const currentPrefinal = ensureTermScores(item.prefinal, 0, hasLab)
+        const currentFinal = ensureTermScores(item.final, 0, hasLab)
 
         const targetTerm =
           period === 'prelim'
             ? currentPrelim
             : period === 'midterm'
             ? currentMidterm
+            : period === 'prefinal'
+            ? currentPrefinal
             : currentFinal
 
         const existingItems = targetTerm.items || {
-          attendance: [targetTerm.attendance],
-          quiz: [targetTerm.quiz],
-          labActivity: hasLab ? [targetTerm.labActivity ?? 85] : [],
-          activity: [targetTerm.activity],
-          exam: [targetTerm.exam],
+          attendance: [0],
+          quiz: [0],
+          activity: [0],
+          participation: [0],
+          exam: [0],
+          labActivity: hasLab ? [0] : [],
         }
 
-        const currentFieldArr = [...(existingItems[field] || [])]
-        const defaultNewScore =
-          currentFieldArr.length > 0
-            ? Math.round(computeItemsAverage(currentFieldArr))
-            : 85
-        currentFieldArr.push(defaultNewScore)
+        const currentFieldArr = [...(existingItems[field] || [0])]
+        // Push 0 (unencoded) — NEVER auto-fill 85!
+        currentFieldArr.push(0)
 
         const updatedItems = {
           ...existingItems,
           [field]: currentFieldArr,
         }
 
-        const nextAttendance = computeItemsAverage(updatedItems.attendance)
-        const nextQuiz = computeItemsAverage(updatedItems.quiz)
-        const nextLab = hasLab ? computeItemsAverage(updatedItems.labActivity) : null
-        const nextActivity = computeItemsAverage(updatedItems.activity)
-        const nextExam = computeItemsAverage(updatedItems.exam)
-
         const updatedTerm: DetailedTermScores = {
           ...targetTerm,
-          attendance: nextAttendance,
-          quiz: nextQuiz,
-          labActivity: nextLab,
-          activity: nextActivity,
-          exam: nextExam,
           items: updatedItems,
-          activities: nextActivity,
-          labExam: nextLab,
-          computedTermGrade: 0,
         }
-        updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
 
-        const nextPrelim = period === 'prelim' ? updatedTerm : currentPrelim
-        const nextMidterm = period === 'midterm' ? updatedTerm : currentMidterm
-        const nextFinal = period === 'final' ? updatedTerm : currentFinal
-
-        const newAverage = computeOverallFromTerms(
-          nextPrelim.computedTermGrade,
-          nextMidterm.computedTermGrade,
-          nextFinal.computedTermGrade,
-        )
-
-        return {
+        const nextSheet: DetailedGradingSheet = {
           ...item,
-          prelim: nextPrelim,
-          midterm: nextMidterm,
-          final: nextFinal,
-          average: newAverage,
+          prelim: period === 'prelim' ? updatedTerm : currentPrelim,
+          midterm: period === 'midterm' ? updatedTerm : currentMidterm,
+          prefinal: period === 'prefinal' ? updatedTerm : currentPrefinal,
+          final: period === 'final' ? updatedTerm : currentFinal,
         }
+
+        return recalculateSheetGrades(nextSheet, hasLab, weightsConfig)
       })
 
       return { ...current, [classId]: updatedSheet }
@@ -1842,26 +2378,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDetailedGradingSheets((current) => {
       const classSheet = current[classId] ?? []
       const updatedSheet = classSheet.map((item) => {
-        const currentPrelim = ensureTermScores(item.prelim, 82, hasLab)
-        const currentMidterm = ensureTermScores(item.midterm, 83, hasLab)
-        const currentFinal = ensureTermScores(item.final, 85, hasLab)
+        const currentPrelim = ensureTermScores(item.prelim, 0, hasLab)
+        const currentMidterm = ensureTermScores(item.midterm, 0, hasLab)
+        const currentPrefinal = ensureTermScores(item.prefinal, 0, hasLab)
+        const currentFinal = ensureTermScores(item.final, 0, hasLab)
 
         const targetTerm =
           period === 'prelim'
             ? currentPrelim
             : period === 'midterm'
             ? currentMidterm
+            : period === 'prefinal'
+            ? currentPrefinal
             : currentFinal
 
         const existingItems = targetTerm.items || {
-          attendance: [targetTerm.attendance],
-          quiz: [targetTerm.quiz],
-          labActivity: hasLab ? [targetTerm.labActivity ?? 85] : [],
-          activity: [targetTerm.activity],
-          exam: [targetTerm.exam],
+          attendance: [0],
+          quiz: [0],
+          activity: [0],
+          participation: [0],
+          exam: [0],
+          labActivity: hasLab ? [0] : [],
         }
 
-        const currentFieldArr = [...(existingItems[field] || [])]
+        const currentFieldArr = [...(existingItems[field] || [0])]
         if (currentFieldArr.length <= 1) return item
         currentFieldArr.pop()
 
@@ -1870,65 +2410,93 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           [field]: currentFieldArr,
         }
 
-        const nextAttendance = computeItemsAverage(updatedItems.attendance)
-        const nextQuiz = computeItemsAverage(updatedItems.quiz)
-        const nextLab = hasLab ? computeItemsAverage(updatedItems.labActivity) : null
-        const nextActivity = computeItemsAverage(updatedItems.activity)
-        const nextExam = computeItemsAverage(updatedItems.exam)
-
         const updatedTerm: DetailedTermScores = {
           ...targetTerm,
-          attendance: nextAttendance,
-          quiz: nextQuiz,
-          labActivity: nextLab,
-          activity: nextActivity,
-          exam: nextExam,
+          attendance: computeItemsAverage(updatedItems.attendance),
+          quiz: computeItemsAverage(updatedItems.quiz),
+          activity: computeItemsAverage(updatedItems.activity),
+          participation: computeItemsAverage(updatedItems.participation),
+          exam: computeItemsAverage(updatedItems.exam),
+          labActivity: hasLab ? computeItemsAverage(updatedItems.labActivity || [0]) : null,
           items: updatedItems,
-          activities: nextActivity,
-          labExam: nextLab,
-          computedTermGrade: 0,
         }
-        updatedTerm.computedTermGrade = computeTermGrade(updatedTerm, hasLab)
 
-        const nextPrelim = period === 'prelim' ? updatedTerm : currentPrelim
-        const nextMidterm = period === 'midterm' ? updatedTerm : currentMidterm
-        const nextFinal = period === 'final' ? updatedTerm : currentFinal
-
-        const newAverage = computeOverallFromTerms(
-          nextPrelim.computedTermGrade,
-          nextMidterm.computedTermGrade,
-          nextFinal.computedTermGrade,
-        )
-
-        return {
+        const nextSheet: DetailedGradingSheet = {
           ...item,
-          prelim: nextPrelim,
-          midterm: nextMidterm,
-          final: nextFinal,
-          average: newAverage,
+          prelim: period === 'prelim' ? updatedTerm : currentPrelim,
+          midterm: period === 'midterm' ? updatedTerm : currentMidterm,
+          prefinal: period === 'prefinal' ? updatedTerm : currentPrefinal,
+          final: period === 'final' ? updatedTerm : currentFinal,
         }
+
+        return recalculateSheetGrades(nextSheet, hasLab, weightsConfig)
       })
 
       return { ...current, [classId]: updatedSheet }
     })
   }
 
+  /**
+   * Saves & submits all grades for a class to the Administrator, persisting to Supabase
+   * and sending an official Grade Submission notification to Admin.
+   */
+  async function submitClassGradesToAdmin(classId: string, instructorName?: string) {
+    const cls = classes.find((c) => c.id === classId)
+    if (!cls) return
+
+    const subj = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+    const inst =
+      instructors.find((i) => i.id === cls.instructor_id || i.profile_id === cls.instructor_id) ||
+      cls.instructor
+    const resolvedInstructorName = instructorName || inst?.name || 'Instructor'
+    const sectionName = cls.section?.name || 'Section'
+    const nowIso = new Date().toISOString()
+
+    const classSheet = detailedGradingSheets[classId] || []
+    const updatedSheet = classSheet.map((row) => ({
+      ...row,
+      submittedToAdmin: true,
+      submittedAt: nowIso,
+    }))
+
+    setDetailedGradingSheets((prev) => ({
+      ...prev,
+      [classId]: updatedSheet,
+    }))
+
+    // Persist every student's summary and basis to Supabase
+    for (const row of updatedSheet) {
+      syncStudentSheetToSupabase(classId, row.studentId, row)
+    }
+
+    // Create notification for Administrator
+    addNotification({
+      role: 'administrator',
+      category: 'grades',
+      title: `Grades Submitted: ${subj?.code || 'Subject'} (${sectionName})`,
+      message: `Instructor ${resolvedInstructorName} submitted grades for ${subj?.code || ''} - ${subj?.title || 'Subject'} (${sectionName}) covering ${updatedSheet.length} student(s).`,
+    })
+
+    addActivityLog(
+      resolvedInstructorName,
+      `Submitted class grades to Admin for ${subj?.code || ''} - ${subj?.title || 'Class'} (${sectionName})`,
+      'Gradebook',
+    )
+  }
+
   function generateReport(type: any, activeUserName: string) {
     const report: Report = {
       id: crypto.randomUUID(),
+      class_id: selectedClass?.id,
       type: type as any,
       title: `${type} - ${selectedClass ? getSubjectTitle(subjects, selectedClass.subject_id) : 'Schoolwide'}`,
       generated_by: activeUserName || 'System',
+      export_format: 'view',
       created_at: new Date().toLocaleString(),
     }
     setReports((current) => [report, ...current])
+    dbReports.create(report).catch(() => {})
     addActivityLog(activeUserName || 'User', `Generated official report: ${report.title}`, 'Reports')
-    addNotification({
-      title: 'Report generated',
-      message: `${report.title} is now compiled and ready for print or export.`,
-      role: 'all',
-      category: 'report',
-    })
   }
 
   function reportText() {
@@ -1936,37 +2504,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       'Trackademic Academic & Prediction Report',
       `School Year: ${settings.schoolYear} | ${settings.semester}`,
       `Class: ${selectedClass ? getSubjectTitle(subjects, selectedClass.subject_id) : 'N/A'}`,
-      `Section: ${selectedClass?.section?.name ?? 'CIT A'}`,
+      `Section: ${selectedClass?.section?.name ?? 'N/A'}`,
       `Room: ${selectedClass?.room ?? 'N/A'}`,
       `Schedule: ${selectedClass?.schedule ?? 'N/A'}`,
       `Generated by: System`,
       '',
-      'Student,Prelim Att,Prelim Quiz,Prelim Lab,Prelim Act,Prelim Exam,Prelim Grade,Midterm Att,Midterm Quiz,Midterm Lab,Midterm Act,Midterm Exam,Midterm Grade,Final Att,Final Quiz,Final Lab,Final Act,Final Exam,Final Grade,Overall Grade,GPA,Status',
+      'Student,Prelim Grade,Midterm Grade,Pre-Final Grade,Final Grade,Overall Grade,GPA,Status',
       ...gradebook.map((item) => {
         const p = item.row.prelim
         const m = item.row.midterm
+        const pf = item.row.prefinal
         const f = item.row.final
         return [
           item.student?.name ?? item.student?.student_no ?? 'Student',
-          p?.attendance ?? '-',
-          p?.quiz ?? '-',
-          p?.labActivity ?? 'N/A',
-          p?.activity ?? '-',
-          p?.exam ?? '-',
-          item.computed.preliminary,
-          m?.attendance ?? '-',
-          m?.quiz ?? '-',
-          m?.labActivity ?? 'N/A',
-          m?.activity ?? '-',
-          m?.exam ?? '-',
-          item.computed.midterm,
-          f?.attendance ?? '-',
-          f?.quiz ?? '-',
-          f?.labActivity ?? 'N/A',
-          f?.activity ?? '-',
-          f?.exam ?? '-',
-          item.computed.final,
-          `${item.computed.overall}%`,
+          isTermEncoded(p) ? Math.round(p?.computedTermGrade || 0) : '-',
+          isTermEncoded(m) ? Math.round(m?.computedTermGrade || 0) : '-',
+          isTermEncoded(pf) ? Math.round(pf?.computedTermGrade || 0) : '-',
+          isTermEncoded(f) ? Math.round(f?.computedTermGrade || 0) : '-',
+          item.computed.overall > 0 ? `${Math.round(item.computed.overall)}%` : '-',
           item.computed.gpaEquiv,
           item.computed.status,
         ].join(',')
@@ -1980,8 +2535,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!clsId) return
     const cls = classes.find((c) => c.id === clsId)
     if (!cls) return
-    const subj = subjects.find((s) => s.id === cls.subject_id)
-    const inst = instructors.find((i) => i.id === cls.instructor_id)
+    const subj = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+    const inst =
+      instructors.find((i) => i.id === cls.instructor_id || i.profile_id === cls.instructor_id) ||
+      cls.instructor
     const hasLab = subj?.has_laboratory ?? false
     const classSheet = detailedGradingSheets[clsId] || []
 
@@ -1990,11 +2547,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return {
         studentName: item.studentName || matchedStudent?.name || 'Student',
         studentNo: item.studentNo || matchedStudent?.student_no,
-        prelim: ensureTermScores(item.prelim, 82, hasLab),
-        midterm: ensureTermScores(item.midterm, 83, hasLab),
-        final: ensureTermScores(item.final, 85, hasLab),
-        average: item.average || 0,
-        status: item.status || 'On Track',
+        prelim: ensureTermScores(item.prelim, 0, hasLab),
+        midterm: ensureTermScores(item.midterm, 0, hasLab),
+        final: ensureTermScores(item.final, 0, hasLab),
+        average: Math.round(item.average || 0),
+        status: item.status || 'Pending',
       }
     })
 
@@ -2002,31 +2559,60 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subjectCode: subj?.code || 'SUBJ',
       subjectTitle: subj?.title || 'Subject Title',
       hasLaboratory: hasLab,
-      sectionName: cls.section?.name || 'CIT A',
-      instructorName: inst?.name || 'Trainer',
+      sectionName: cls.section?.name || 'Section',
+      instructorName: inst?.name || 'Instructor',
       schedule: cls.schedule || 'TBA',
-      room: cls.room || 'Room 201',
+      room: cls.room || 'TBA',
       schoolYear: `${settings.schoolYear} (${settings.semester})`,
       students: studentRows,
     })
   }
 
   function printStudentGradingBookReportTrigger(studentIdToPrint?: string, gradesOnly?: boolean) {
-    const stId = studentIdToPrint || 'stud-3'
-    const student = students.find((s) => s.id === stId) || students[0]
-    const templateData = studentTemplateRecords[stId] || studentTemplateRecords['stud-3']
+    const student =
+      students.find((s) => s.id === studentIdToPrint || s.profile_id === studentIdToPrint) ||
+      students[0]
+    if (!student) return
+
+    const studentClasses = classes.filter((c) => (c.studentIds || []).includes(student.id))
+    const rows: StudentAssessmentRow[] = studentClasses.map((cls) => {
+      const subj = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+      const hasLab = Boolean(subj?.has_laboratory)
+      const sheetRow = (detailedGradingSheets[cls.id] || []).find(
+        (r) => r.studentId === student.id,
+      )
+      const prelim = ensureTermScores(sheetRow?.prelim, 0, hasLab)
+      const midterm = ensureTermScores(sheetRow?.midterm, 0, hasLab)
+      const prefinal = ensureTermScores(sheetRow?.prefinal, 0, hasLab)
+      const final = ensureTermScores(sheetRow?.final, 0, hasLab)
+      return {
+        subjectId: subj?.id || cls.subject_id,
+        code: subj?.code || 'SUBJ',
+        title: subj?.title || 'Subject',
+        units: Number(subj?.units) || 3,
+        hasLaboratory: hasLab,
+        prelim,
+        midterm,
+        prefinal,
+        final,
+        subjectAverage: Math.round(sheetRow?.average || 0),
+      }
+    })
+
+    const encodedRows = rows.filter((r) => r.subjectAverage > 0)
+    const overallAverage =
+      encodedRows.length > 0
+        ? Math.round(
+            encodedRows.reduce((sum, r) => sum + r.subjectAverage, 0) / encodedRows.length,
+          )
+        : 0
 
     printStudentGradingBookReport({
-      studentName: student?.name || templateData.studentName || 'Student Name',
-      section: student ? formatCourseSection(student.course, student.section_label) : 'CIT A',
+      studentName: student.name || 'Student',
+      section: formatCourseSection(student.course, student.section_label),
       schoolYear: `${settings.schoolYear} (${settings.semester})`,
-      rows: templateData.rows,
-      overallAverage: Number(
-        (
-          templateData.rows.reduce((sum, r) => sum + r.subjectAverage, 0) /
-          templateData.rows.length
-        ).toFixed(1),
-      ),
+      rows,
+      overallAverage,
       gradesOnly,
     })
   }
@@ -2043,11 +2629,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStudents,
     subjects,
     setSubjects,
+    sections,
+    setSections,
     classes,
     setClasses,
     grades,
     setGrades,
     detailedGradingSheets,
+    detailedGrades: detailedGradingSheets,
     setDetailedGradingSheets,
     notifications,
     setNotifications,
@@ -2061,6 +2650,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStudentRecordsModalId,
     searchTerm,
     setSearchTerm,
+    studentQuery,
+    setStudentQuery,
+    subjectQuery,
+    setSubjectQuery,
     userForm,
     setUserForm,
     editingUserId,
@@ -2087,11 +2680,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     boundToFailRows,
     averagePerformance,
     filteredStudents,
+    filteredSubjects,
+    refreshData,
     handleSaveUser,
     handleSaveStudent,
+    handleEditStudent,
     deleteStudent,
+    handleDeleteStudent: deleteStudent,
+    resetStudentForm,
+    toggleStudentDropOut,
     handleSaveSubject,
+    handleEditSubject,
     deleteSubject,
+    resetSubjectForm,
     createClass,
     updateClass,
     deleteClass,
@@ -2102,13 +2703,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     addComponentColumn,
     removeComponentColumn,
     updateAssessmentGrade,
+    submitClassGradesToAdmin,
     generateReport,
     reportText,
     printReport,
     printStudentGradingBookReport: printStudentGradingBookReportTrigger,
     printClassGradeReport: printClassGradeReportTrigger,
-    studentTemplateRecords,
+    studentTemplateRecords: {},
     markNotificationRead,
+    markNotificationAsRead: markNotificationRead,
+    markAllNotificationsAsRead,
+    deleteNotification,
+    clearAllNotifications,
     enrollStudentInClasses,
     addNotification,
     addActivityLog,
@@ -2117,4 +2723,3 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>
 }
-

@@ -5,6 +5,7 @@ import type {
   PredictionAnalysis,
   ClassAverages,
   DetailedTermScores,
+  DetailedGradingSheet,
   TermComponentItems,
 } from './types'
 
@@ -17,22 +18,44 @@ export function clampScore(value: string) {
 export function normalizeCourseSection(
   course?: string,
   sectionLabel?: string,
-): { course: 'CIT'; section_label: 'A' | 'B'; display: 'CIT A' | 'CIT B' } {
-  const combined = `${course || ''} ${sectionLabel || ''}`.trim().toUpperCase()
-  const isSectionB =
-    sectionLabel?.trim().toUpperCase() === 'B' ||
-    combined.endsWith('B') ||
-    combined.includes('CIT B') ||
-    combined.includes('CIT-B')
-  const section_label: 'A' | 'B' = isSectionB ? 'B' : 'A'
-  return {
-    course: 'CIT',
-    section_label,
-    display: `CIT ${section_label}`,
+): { course: string; section_label: string; display: string } {
+  const rawCourse = (course || '').trim()
+  const rawSec = (sectionLabel || '').trim()
+
+  if (!rawCourse && !rawSec) {
+    return { course: '', section_label: '', display: 'Unassigned' }
   }
+
+  if (rawCourse && rawSec) {
+    const upperC = rawCourse.toUpperCase()
+    const upperS = rawSec.toUpperCase()
+    if (upperC === upperS || upperC.endsWith(` ${upperS}`) || upperC.endsWith(`-${upperS}`)) {
+      const parts = rawCourse.split(/[\s-]+/).filter(Boolean)
+      if (parts.length >= 2) {
+        const sec = parts[parts.length - 1]
+        const crs = parts.slice(0, -1).join(' ')
+        return { course: crs, section_label: sec, display: `${crs} ${sec}` }
+      }
+      return { course: rawCourse, section_label: rawSec, display: rawCourse }
+    }
+    return {
+      course: rawCourse,
+      section_label: rawSec,
+      display: `${rawCourse} ${rawSec}`.trim(),
+    }
+  }
+
+  const single = (rawCourse || rawSec).trim()
+  const parts = single.split(/[\s-]+/).filter(Boolean)
+  if (parts.length >= 2) {
+    const sec = parts[parts.length - 1]
+    const crs = parts.slice(0, -1).join(' ')
+    return { course: crs, section_label: sec, display: `${crs} ${sec}` }
+  }
+  return { course: single, section_label: '1A', display: single }
 }
 
-export function formatCourseSection(course?: string, sectionLabel?: string): 'CIT A' | 'CIT B' {
+export function formatCourseSection(course?: string, sectionLabel?: string): string {
   return normalizeCourseSection(course, sectionLabel).display
 }
 
@@ -44,38 +67,81 @@ export function getSubjectTitle(subjects: Subject[], subjectId: string | number)
 }
 
 export function getGPAEquivalent(score: number): string {
-  if (score >= 96) return '1.00'
-  if (score >= 91.5) return '1.25'
-  if (score >= 87) return '1.50'
-  if (score >= 82.5) return '1.75'
-  if (score >= 78) return '2.00'
-  if (score >= 73.5) return '2.25'
-  if (score >= 70) return '2.50'
-  if (score >= 65) return '2.75'
-  if (score >= 60) return '3.00'
+  if (score <= 0) return 'N/A'
+  const rounded = Math.round(score)
+  if (rounded >= 96) return '1.00'
+  if (rounded >= 92) return '1.25'
+  if (rounded >= 87) return '1.50'
+  if (rounded >= 83) return '1.75'
+  if (rounded >= 78) return '2.00'
+  if (rounded >= 75) return '2.25'
+  if (rounded >= 70) return '2.50'
+  if (rounded >= 65) return '2.75'
+  if (rounded >= 60) return '3.00'
   return '5.00'
 }
 
+export function getLetterGrade(score: number): string {
+  if (score <= 0) return '—'
+  if (score >= 90) return 'A'
+  if (score >= 80) return 'B'
+  if (score >= 75) return 'C'
+  if (score >= 70) return 'D'
+  return 'F'
+}
+
 export function getPrediction(overall: number, trendScore: number): PredictionStatus {
-  if (overall < 74 || trendScore < 74) return 'Bound to Fail'
-  if (overall < 75 || trendScore < 75) return 'At Risk'
+  if (overall <= 0 && trendScore <= 0) return 'Pending'
+  if (overall < 74 || (trendScore > 0 && trendScore < 74)) return 'Bound to Fail'
+  if (overall < 75 || (trendScore > 0 && trendScore < 75)) return 'At Risk'
   if (overall >= 90) return 'Excellent'
   if (overall >= 83) return 'Good'
   return 'Average'
 }
 
+export function isTermEncoded(term?: Partial<DetailedTermScores> | null): boolean {
+  if (!term || typeof term !== 'object') return false
+  if (term.hasData === true) return true
+  const hasPositiveScore =
+    (typeof term.attendance === 'number' && term.attendance > 0) ||
+    (typeof term.quiz === 'number' && term.quiz > 0) ||
+    (typeof term.activity === 'number' && term.activity > 0) ||
+    (typeof term.activities === 'number' && term.activities > 0) ||
+    (typeof term.participation === 'number' && term.participation > 0) ||
+    (typeof term.exam === 'number' && term.exam > 0) ||
+    (typeof term.labActivity === 'number' && term.labActivity > 0) ||
+    (typeof term.rawGrade === 'number' && term.rawGrade > 0) ||
+    (typeof term.computedTermGrade === 'number' && term.computedTermGrade > 0) ||
+    (typeof term.termGrade === 'number' && term.termGrade > 0)
+  return hasPositiveScore
+}
+
+/**
+ * Computes the Period Raw Grade (100%) using the required grading system formula:
+ * Attendance (10%) + Quizzes (20%) + Activity (20%) + Participation (10%) + Exam (40%) = 100%
+ */
 export function computeTermGrade(
   term: {
     attendance?: number
     quiz?: number
-    labActivity?: number | null
     activity?: number
     activities?: number
+    participation?: number
     exam?: number
+    labActivity?: number | null
     labExam?: number | null
+    hasData?: boolean
   },
-  hasLaboratory: boolean = true,
+  _hasLaboratory: boolean = false,
+  weights?: {
+    attendance?: number
+    quiz?: number
+    activity?: number
+    participation?: number
+    exam?: number
+  },
 ): number {
+  if (!term) return 0
   const attendance = typeof term.attendance === 'number' ? term.attendance : 0
   const quiz = typeof term.quiz === 'number' ? term.quiz : 0
   const activity =
@@ -84,38 +150,129 @@ export function computeTermGrade(
       : typeof term.activities === 'number'
       ? term.activities
       : 0
+  const participation =
+    typeof term.participation === 'number'
+      ? term.participation
+      : typeof term.labActivity === 'number' && term.labActivity > 0
+      ? term.labActivity
+      : typeof term.labExam === 'number' && term.labExam > 0
+      ? term.labExam
+      : 0
   const exam = typeof term.exam === 'number' ? term.exam : 0
-  const rawLab = term.labActivity !== undefined ? term.labActivity : term.labExam
 
-  if (hasLaboratory && typeof rawLab === 'number') {
-    // Weighted term computation with Lab Activity:
-    // Attendance (10%) + Quiz (20%) + Lab Activity (20%) + Activity (10%) + Exam (40%) = 100%
-    const weighted =
-      attendance * 0.1 + quiz * 0.2 + rawLab * 0.2 + activity * 0.1 + exam * 0.4
-    return Number(weighted.toFixed(1))
+  if (
+    term.hasData !== true &&
+    attendance <= 0 &&
+    quiz <= 0 &&
+    activity <= 0 &&
+    participation <= 0 &&
+    exam <= 0
+  ) {
+    return 0
   }
 
-  // Lecture-only term computation:
-  // Attendance (10%) + Quiz (25%) + Activity (25%) + Exam (40%) = 100%
-  const weighted = attendance * 0.1 + quiz * 0.25 + activity * 0.25 + exam * 0.4
+  const wAtt = (weights?.attendance ?? 10) / 100
+  const wQuiz = (weights?.quiz ?? 20) / 100
+  const wAct = (weights?.activity ?? 20) / 100
+  const wPart = (weights?.participation ?? 10) / 100
+  const wExam = (weights?.exam ?? 40) / 100
+
+  const weighted =
+    attendance * wAtt +
+    quiz * wQuiz +
+    activity * wAct +
+    participation * wPart +
+    exam * wExam
+
   return Number(weighted.toFixed(1))
+}
+
+/**
+ * Computes cumulative grades across periods:
+ * - Prelim Grade = Prelim Raw Grade
+ * - Midterm Grade = Prelim Grade (40%) + Midterm Raw Grade (60%)
+ * - Pre-Final Grade = Midterm Grade (40%) + Pre-Final Raw Grade (60%)
+ * - Final Grade = Pre-Final Grade (40%) + Final Raw Grade (60%)
+ */
+export function computeCumulativePeriodGrades(params: {
+  prelimRaw: number
+  prelimEncoded?: boolean
+  midtermRaw?: number
+  midtermEncoded?: boolean
+  prefinalRaw?: number
+  prefinalEncoded?: boolean
+  finalRaw?: number
+  finalEncoded?: boolean
+}) {
+  const isPrelimEncoded =
+    params.prelimEncoded ?? (typeof params.prelimRaw === 'number' && params.prelimRaw > 0)
+  const isMidtermEncoded =
+    params.midtermEncoded ?? (typeof params.midtermRaw === 'number' && params.midtermRaw > 0)
+  const isPrefinalEncoded =
+    params.prefinalEncoded ?? (typeof params.prefinalRaw === 'number' && params.prefinalRaw > 0)
+  const isFinalEncoded =
+    params.finalEncoded ?? (typeof params.finalRaw === 'number' && params.finalRaw > 0)
+
+  let runningCumulative: number | null = null
+
+  const prelimCumulative = isPrelimEncoded ? Number(params.prelimRaw.toFixed(1)) : 0
+  if (isPrelimEncoded) {
+    runningCumulative = prelimCumulative
+  }
+
+  let midtermCumulative = 0
+  if (isMidtermEncoded && typeof params.midtermRaw === 'number') {
+    midtermCumulative =
+      runningCumulative !== null
+        ? Number((runningCumulative * 0.4 + params.midtermRaw * 0.6).toFixed(1))
+        : Number(params.midtermRaw.toFixed(1))
+    runningCumulative = midtermCumulative
+  }
+
+  let prefinalCumulative = 0
+  if (isPrefinalEncoded && typeof params.prefinalRaw === 'number') {
+    prefinalCumulative =
+      runningCumulative !== null
+        ? Number((runningCumulative * 0.4 + params.prefinalRaw * 0.6).toFixed(1))
+        : Number(params.prefinalRaw.toFixed(1))
+    runningCumulative = prefinalCumulative
+  }
+
+  let finalCumulative = 0
+  if (isFinalEncoded && typeof params.finalRaw === 'number') {
+    finalCumulative =
+      runningCumulative !== null
+        ? Number((runningCumulative * 0.4 + params.finalRaw * 0.6).toFixed(1))
+        : Number(params.finalRaw.toFixed(1))
+    runningCumulative = finalCumulative
+  }
+
+  const currentOverall = runningCumulative !== null ? Math.round(runningCumulative) : 0
+
+  return {
+    prelimCumulative,
+    midtermCumulative,
+    prefinalCumulative,
+    finalCumulative,
+    prelimGrade: isPrelimEncoded ? prelimCumulative : null,
+    midtermGrade: isMidtermEncoded ? midtermCumulative : null,
+    prefinalGrade: isPrefinalEncoded ? prefinalCumulative : null,
+    finalGrade: isFinalEncoded ? finalCumulative : null,
+    currentOverall,
+  }
 }
 
 export function computeOverallFromTerms(
   prelimGrade: number,
   midtermGrade: number,
   finalGrade: number,
+  prefinalGrade?: number,
 ): number {
-  const active = [
-    { grade: prelimGrade, weight: 0.3 },
-    { grade: midtermGrade, weight: 0.3 },
-    { grade: finalGrade, weight: 0.4 },
-  ].filter((t) => typeof t.grade === 'number' && t.grade > 0)
-
-  if (active.length === 0) return 0
-  const totalWeight = active.reduce((sum, t) => sum + t.weight, 0)
-  const weightedSum = active.reduce((sum, t) => sum + t.grade * t.weight, 0)
-  return Number((weightedSum / totalWeight).toFixed(1))
+  if (finalGrade > 0) return Math.round(finalGrade)
+  if (typeof prefinalGrade === 'number' && prefinalGrade > 0) return Math.round(prefinalGrade)
+  if (midtermGrade > 0) return Math.round(midtermGrade)
+  if (prelimGrade > 0) return Math.round(prelimGrade)
+  return 0
 }
 
 export function computeItemsAverage(scores: number[]): number {
@@ -125,131 +282,294 @@ export function computeItemsAverage(scores: number[]): number {
   return Number((sum / valid.length).toFixed(1))
 }
 
-export function buildDefaultItemsFromAverage(avgScore: number, count: number): number[] {
-  const base = Math.max(0, Math.min(100, Math.round(avgScore || 80)))
-  if (count <= 1) return [base]
-  if (count === 2) {
-    const d = base >= 1 && base <= 99 ? 1 : 0
-    return [base - d, base + d]
+export function createEmptyTermScores(hasLaboratory: boolean = false): DetailedTermScores {
+  return {
+    attendance: 0,
+    quiz: 0,
+    activity: 0,
+    participation: 0,
+    exam: 0,
+    labActivity: hasLaboratory ? 0 : null,
+    rawGrade: 0,
+    computedTermGrade: 0,
+    termGrade: 0,
+    hasData: false,
+    items: {
+      attendance: [0],
+      quiz: [0],
+      activity: [0],
+      participation: [0],
+      exam: [0],
+      labActivity: hasLaboratory ? [0] : [],
+    },
+    quiz1: 0,
+    quiz2: 0,
+    act1: 0,
+    act2: 0,
+    act3: 0,
+    activities: 0,
+    labExam: hasLaboratory ? 0 : null,
   }
-  // count === 3 (e.g. Quiz 1, Quiz 2, Quiz 3 -> 82, 84, 86 for avg 84)
-  const d = base >= 2 && base <= 98 ? 2 : 0
-  const arr = [base - d, base, base + d]
-  while (arr.length < count) {
-    arr.push(base)
-  }
-  return arr
 }
 
 export function ensureTermScores(
   rawTerm: any,
-  fallbackBase: number = 82,
-  hasLaboratory: boolean = true,
+  _fallbackBase: number = 0,
+  hasLaboratory: boolean = false,
 ): DetailedTermScores {
+  if (!rawTerm) {
+    return createEmptyTermScores(hasLaboratory)
+  }
+
   if (typeof rawTerm === 'number') {
-    const base = rawTerm || fallbackBase
-    const attendanceAvg = Math.min(100, base + 4)
-    const quizAvg = base
-    const labAvg = hasLaboratory ? base + 1 : null
-    const activityAvg = Math.min(100, base + 2)
-    const examAvg = base
-
+    if (rawTerm <= 0) return createEmptyTermScores(hasLaboratory)
+    const val = Math.max(0, Math.min(100, rawTerm))
     const items: TermComponentItems = {
-      attendance: buildDefaultItemsFromAverage(attendanceAvg, 2),
-      quiz: buildDefaultItemsFromAverage(quizAvg, 3),
-      labActivity: hasLaboratory ? buildDefaultItemsFromAverage(labAvg ?? base, 2) : [],
-      activity: buildDefaultItemsFromAverage(activityAvg, 2),
-      exam: buildDefaultItemsFromAverage(examAvg, 1),
+      attendance: [val],
+      quiz: [val],
+      activity: [val],
+      participation: [val],
+      exam: [val],
+      labActivity: hasLaboratory ? [val] : [],
     }
-
-    const attendance = computeItemsAverage(items.attendance)
-    const quiz = computeItemsAverage(items.quiz)
-    const labActivity = hasLaboratory ? computeItemsAverage(items.labActivity) : null
-    const activity = computeItemsAverage(items.activity)
-    const exam = computeItemsAverage(items.exam)
-
-    const computedTermGrade = computeTermGrade(
-      { attendance, quiz, labActivity, activity, exam },
+    const rawGrade = computeTermGrade(
+      { attendance: val, quiz: val, activity: val, participation: val, exam: val, hasData: true },
       hasLaboratory,
     )
     return {
-      attendance,
-      quiz,
-      labActivity,
-      activity,
-      exam,
-      computedTermGrade,
+      attendance: val,
+      quiz: val,
+      activity: val,
+      participation: val,
+      exam: val,
+      labActivity: hasLaboratory ? val : null,
+      rawGrade,
+      computedTermGrade: rawGrade,
+      termGrade: rawGrade,
+      hasData: true,
       items,
-      activities: activity,
-      labExam: labActivity,
+      quiz1: val,
+      quiz2: val,
+      act1: val,
+      act2: val,
+      act3: val,
+      activities: val,
+      labExam: hasLaboratory ? val : null,
     }
   }
 
-  const baseAttendance =
-    typeof rawTerm?.attendance === 'number' ? rawTerm.attendance : fallbackBase + 4
-  const baseQuiz = typeof rawTerm?.quiz === 'number' ? rawTerm.quiz : fallbackBase
+  const encoded = isTermEncoded(rawTerm)
+  if (!encoded) {
+    return {
+      ...createEmptyTermScores(hasLaboratory),
+      items: {
+        attendance:
+          Array.isArray(rawTerm?.items?.attendance) && rawTerm.items.attendance.length > 0
+            ? rawTerm.items.attendance
+            : [0],
+        quiz:
+          Array.isArray(rawTerm?.items?.quiz) && rawTerm.items.quiz.length > 0
+            ? rawTerm.items.quiz
+            : [0],
+        activity:
+          Array.isArray(rawTerm?.items?.activity) && rawTerm.items.activity.length > 0
+            ? rawTerm.items.activity
+            : [0],
+        participation:
+          Array.isArray(rawTerm?.items?.participation) && rawTerm.items.participation.length > 0
+            ? rawTerm.items.participation
+            : [0],
+        exam:
+          Array.isArray(rawTerm?.items?.exam) && rawTerm.items.exam.length > 0
+            ? rawTerm.items.exam
+            : [0],
+        labActivity: hasLaboratory
+          ? Array.isArray(rawTerm?.items?.labActivity) && rawTerm.items.labActivity.length > 0
+            ? rawTerm.items.labActivity
+            : [0]
+          : [],
+      },
+    }
+  }
+
+  const baseAttendance = typeof rawTerm?.attendance === 'number' ? rawTerm.attendance : 0
+  const baseQuiz = typeof rawTerm?.quiz === 'number' ? rawTerm.quiz : 0
   const baseActivity =
     typeof rawTerm?.activity === 'number'
       ? rawTerm.activity
       : typeof rawTerm?.activities === 'number'
       ? rawTerm.activities
-      : fallbackBase + 2
-  const baseExam = typeof rawTerm?.exam === 'number' ? rawTerm.exam : fallbackBase
-  const rawLab =
-    rawTerm?.labActivity !== undefined
+      : 0
+  const baseParticipation =
+    typeof rawTerm?.participation === 'number'
+      ? rawTerm.participation
+      : typeof rawTerm?.labActivity === 'number'
       ? rawTerm.labActivity
-      : rawTerm?.labExam !== undefined
+      : typeof rawTerm?.labExam === 'number'
       ? rawTerm.labExam
-      : hasLaboratory
-      ? fallbackBase + 1
-      : null
-  const baseLab = hasLaboratory ? (typeof rawLab === 'number' ? rawLab : fallbackBase) : null
+      : 0
+  const baseExam = typeof rawTerm?.exam === 'number' ? rawTerm.exam : 0
+  const baseLab = hasLaboratory
+    ? typeof rawTerm?.labActivity === 'number'
+      ? rawTerm.labActivity
+      : baseParticipation
+    : null
 
   const items: TermComponentItems = {
     attendance:
       Array.isArray(rawTerm?.items?.attendance) && rawTerm.items.attendance.length > 0
         ? rawTerm.items.attendance
-        : buildDefaultItemsFromAverage(baseAttendance, 2),
+        : [baseAttendance],
     quiz:
       Array.isArray(rawTerm?.items?.quiz) && rawTerm.items.quiz.length > 0
         ? rawTerm.items.quiz
-        : buildDefaultItemsFromAverage(baseQuiz, 3),
-    labActivity: hasLaboratory
-      ? Array.isArray(rawTerm?.items?.labActivity) && rawTerm.items.labActivity.length > 0
-        ? rawTerm.items.labActivity
-        : buildDefaultItemsFromAverage(baseLab ?? fallbackBase, 2)
-      : [],
+        : [baseQuiz],
     activity:
       Array.isArray(rawTerm?.items?.activity) && rawTerm.items.activity.length > 0
         ? rawTerm.items.activity
-        : buildDefaultItemsFromAverage(baseActivity, 2),
+        : [baseActivity],
+    participation:
+      Array.isArray(rawTerm?.items?.participation) && rawTerm.items.participation.length > 0
+        ? rawTerm.items.participation
+        : [baseParticipation],
     exam:
       Array.isArray(rawTerm?.items?.exam) && rawTerm.items.exam.length > 0
         ? rawTerm.items.exam
-        : buildDefaultItemsFromAverage(baseExam, 1),
+        : [baseExam],
+    labActivity: hasLaboratory
+      ? Array.isArray(rawTerm?.items?.labActivity) && rawTerm.items.labActivity.length > 0
+        ? rawTerm.items.labActivity
+        : [baseLab ?? 0]
+      : [],
   }
 
   const attendance = computeItemsAverage(items.attendance)
   const quiz = computeItemsAverage(items.quiz)
-  const labActivity = hasLaboratory ? computeItemsAverage(items.labActivity) : null
   const activity = computeItemsAverage(items.activity)
+  const participation = computeItemsAverage(items.participation)
   const exam = computeItemsAverage(items.exam)
+  const labActivity = hasLaboratory ? computeItemsAverage(items.labActivity || [0]) : null
 
-  const computedTermGrade = computeTermGrade(
-    { attendance, quiz, labActivity, activity, exam },
+  const rawGrade = computeTermGrade(
+    { attendance, quiz, activity, participation, exam, labActivity, hasData: true },
     hasLaboratory,
   )
+
+  const computedVal =
+    typeof rawTerm.computedTermGrade === 'number' && rawTerm.computedTermGrade > 0
+      ? rawTerm.computedTermGrade
+      : typeof rawTerm.termGrade === 'number' && rawTerm.termGrade > 0
+      ? rawTerm.termGrade
+      : rawGrade
 
   return {
     attendance,
     quiz,
-    labActivity,
     activity,
+    participation,
     exam,
-    computedTermGrade,
+    labActivity,
+    rawGrade,
+    computedTermGrade: computedVal,
+    termGrade: computedVal,
+    hasData: true,
     items,
+    quiz1: items.quiz[0] ?? quiz,
+    quiz2: items.quiz[1] ?? quiz,
+    act1: items.activity[0] ?? activity,
+    act2: items.activity[1] ?? activity,
+    act3: items.activity[2] ?? activity,
     activities: activity,
     labExam: labActivity,
+  }
+}
+
+export function recalculateSheetGrades(
+  sheet: DetailedGradingSheet,
+  hasLaboratory: boolean = false,
+  weights?: {
+    attendance?: number
+    quiz?: number
+    activity?: number
+    participation?: number
+    exam?: number
+  },
+): DetailedGradingSheet {
+  const prelim = ensureTermScores(sheet.prelim, 0, hasLaboratory)
+  const midterm = ensureTermScores(sheet.midterm, 0, hasLaboratory)
+  const prefinal = ensureTermScores(sheet.prefinal, 0, hasLaboratory)
+  const final = ensureTermScores(sheet.final, 0, hasLaboratory)
+
+  const prelimEncoded = isTermEncoded(prelim)
+  const midtermEncoded = isTermEncoded(midterm)
+  const prefinalEncoded = isTermEncoded(prefinal)
+  const finalEncoded = isTermEncoded(final)
+
+  const prelimRaw = prelimEncoded ? computeTermGrade(prelim, hasLaboratory, weights) : 0
+  const midtermRaw = midtermEncoded ? computeTermGrade(midterm, hasLaboratory, weights) : 0
+  const prefinalRaw = prefinalEncoded ? computeTermGrade(prefinal, hasLaboratory, weights) : 0
+  const finalRaw = finalEncoded ? computeTermGrade(final, hasLaboratory, weights) : 0
+
+  const cumulative = computeCumulativePeriodGrades({
+    prelimRaw,
+    prelimEncoded,
+    midtermRaw,
+    midtermEncoded,
+    prefinalRaw,
+    prefinalEncoded,
+    finalRaw,
+    finalEncoded,
+  })
+
+  prelim.rawGrade = prelimRaw
+  prelim.computedTermGrade = cumulative.prelimCumulative
+  prelim.termGrade = cumulative.prelimCumulative
+  prelim.hasData = prelimEncoded
+
+  midterm.rawGrade = midtermRaw
+  midterm.computedTermGrade = cumulative.midtermCumulative
+  midterm.termGrade = cumulative.midtermCumulative
+  midterm.hasData = midtermEncoded
+
+  prefinal.rawGrade = prefinalRaw
+  prefinal.computedTermGrade = cumulative.prefinalCumulative
+  prefinal.termGrade = cumulative.prefinalCumulative
+  prefinal.hasData = prefinalEncoded
+
+  final.rawGrade = finalRaw
+  final.computedTermGrade = cumulative.finalCumulative
+  final.termGrade = cumulative.finalCumulative
+  final.hasData = finalEncoded
+
+  const newAverage = cumulative.currentOverall
+
+  let status: PredictionStatus = sheet.status === 'Dropped' ? 'Dropped' : 'Pending'
+  if (sheet.status !== 'Dropped' && newAverage > 0) {
+    if (newAverage >= 90) status = 'Excellent'
+    else if (newAverage >= 83) status = 'Good'
+    else if (newAverage >= 75) status = 'On Track'
+    else if (newAverage >= 70) status = 'At Risk'
+    else status = 'Bound to Fail'
+  }
+
+  return {
+    ...sheet,
+    prelim,
+    midterm,
+    prefinal,
+    final,
+    prelimExam: prelim.exam,
+    quiz: prelim.quiz,
+    activity: prelim.activity,
+    attendance: prelim.attendance,
+    participation: prelim.participation,
+    labExam: prelim.labActivity,
+    midtermScore: midterm.computedTermGrade,
+    finalScore: final.computedTermGrade,
+    average: newAverage,
+    overallGrade: newAverage,
+    predictedFinal: newAverage,
+    status,
   }
 }
 
@@ -257,104 +577,110 @@ export function computeTemplateSubjectAverage(
   scores: {
     prelim?: any
     midterm?: any
+    prefinal?: any
     final?: any
-    prelimExam?: number
-    quiz?: number
-    activity?: number
-    attendance?: number
-    participation?: number
-    labExam?: number | null
   },
   hasLaboratory: boolean,
 ): number {
-  if (
-    scores.prelim &&
-    typeof scores.prelim === 'object' &&
-    scores.midterm &&
-    typeof scores.midterm === 'object' &&
-    scores.final &&
-    typeof scores.final === 'object'
-  ) {
-    const pGrade = computeTermGrade(scores.prelim, hasLaboratory)
-    const mGrade = computeTermGrade(scores.midterm, hasLaboratory)
-    const fGrade = computeTermGrade(scores.final, hasLaboratory)
-    return computeOverallFromTerms(pGrade, mGrade, fGrade)
-  }
+  const prelim = ensureTermScores(scores.prelim, 0, hasLaboratory)
+  const midterm = ensureTermScores(scores.midterm, 0, hasLaboratory)
+  const prefinal = ensureTermScores(scores.prefinal, 0, hasLaboratory)
+  const final = ensureTermScores(scores.final, 0, hasLaboratory)
 
-  const values: number[] = []
-  if (typeof scores.prelimExam === 'number' && scores.prelimExam > 0) values.push(scores.prelimExam)
-  if (typeof scores.quiz === 'number' && scores.quiz > 0) values.push(scores.quiz)
-  if (typeof scores.activity === 'number' && scores.activity > 0) values.push(scores.activity)
-  if (typeof scores.attendance === 'number' && scores.attendance > 0) values.push(scores.attendance)
-  if (typeof scores.participation === 'number' && scores.participation > 0) values.push(scores.participation)
-  if (hasLaboratory && typeof scores.labExam === 'number' && scores.labExam > 0) values.push(scores.labExam)
-  if (typeof scores.midterm === 'number' && scores.midterm > 0) values.push(scores.midterm)
-  if (typeof scores.final === 'number' && scores.final > 0) values.push(scores.final)
-
-  if (values.length === 0) return 0
-  const avg = values.reduce((sum, v) => sum + v, 0) / values.length
-  return Number(avg.toFixed(1))
+  const cumulative = computeCumulativePeriodGrades({
+    prelimRaw: prelim.rawGrade || 0,
+    prelimEncoded: isTermEncoded(prelim),
+    midtermRaw: midterm.rawGrade || 0,
+    midtermEncoded: isTermEncoded(midterm),
+    prefinalRaw: prefinal.rawGrade || 0,
+    prefinalEncoded: isTermEncoded(prefinal),
+    finalRaw: final.rawGrade || 0,
+    finalEncoded: isTermEncoded(final),
+  })
+  return cumulative.currentOverall
 }
 
 export function computeGrade(row: GradeRow): PredictionAnalysis {
-  let preliminary: number
-  let midterm: number
-  let final: number
+  const prelimEncoded = isTermEncoded(row.prelim)
+  const midtermEncoded = isTermEncoded(row.midterm)
+  const prefinalEncoded = isTermEncoded(row.prefinal)
+  const finalEncoded = isTermEncoded(row.final)
 
-  if (row.prelim && row.midterm && row.final) {
-    const hasLab = row.prelim.labActivity !== null && row.prelim.labActivity !== undefined
-    preliminary = Math.round(computeTermGrade(row.prelim, hasLab))
-    midterm = Math.round(computeTermGrade(row.midterm, hasLab))
-    final = Math.round(computeTermGrade(row.final, hasLab))
-  } else {
-    const attScore = typeof row.attendance === 'number' ? row.attendance : 85
-    const labScore = typeof row.labExam === 'number' ? row.labExam : row.activities
+  let preliminary = 0
+  let midterm = 0
+  let prefinal = 0
+  let final = 0
+  let overall = 0
+
+  if (row.prelim || row.midterm || row.prefinal || row.final) {
+    const pRaw = prelimEncoded ? (row.prelim?.rawGrade ?? computeTermGrade(row.prelim!)) : 0
+    const mRaw = midtermEncoded ? (row.midterm?.rawGrade ?? computeTermGrade(row.midterm!)) : 0
+    const pfRaw = prefinalEncoded ? (row.prefinal?.rawGrade ?? computeTermGrade(row.prefinal!)) : 0
+    const fRaw = finalEncoded ? (row.final?.rawGrade ?? computeTermGrade(row.final!)) : 0
+
+    const cum = computeCumulativePeriodGrades({
+      prelimRaw: pRaw,
+      prelimEncoded,
+      midtermRaw: mRaw,
+      midtermEncoded,
+      prefinalRaw: pfRaw,
+      prefinalEncoded,
+      finalRaw: fRaw,
+      finalEncoded,
+    })
+
+    preliminary = Math.round(cum.prelimCumulative)
+    midterm = Math.round(cum.midtermCumulative)
+    prefinal = Math.round(cum.prefinalCumulative)
+    final = Math.round(cum.finalCumulative)
+    overall = cum.currentOverall
+  } else if (row.quizzes > 0 || row.activities > 0 || row.midtermExam > 0 || row.finalExam > 0) {
+    const attScore = typeof row.attendance === 'number' ? row.attendance : 0
+    const partScore = typeof row.participation === 'number' ? row.participation : 0
     preliminary = Math.round(
-      attScore * 0.1 +
-        row.quizzes * 0.2 +
-        labScore * 0.2 +
-        row.activities * 0.1 +
-        (row.midtermExam || row.quizzes) * 0.4,
+      attScore * 0.1 + row.quizzes * 0.2 + row.activities * 0.2 + partScore * 0.1 + row.midtermExam * 0.4,
     )
-    midterm = Math.round(
-      attScore * 0.1 +
-        row.quizzes * 0.2 +
-        labScore * 0.2 +
-        row.activities * 0.1 +
-        row.midtermExam * 0.4,
-    )
+    midterm = preliminary
     final = Math.round(
-      attScore * 0.1 +
-        row.quizzes * 0.2 +
-        labScore * 0.2 +
-        row.activities * 0.1 +
-        row.finalExam * 0.4,
+      attScore * 0.1 + row.quizzes * 0.2 + row.activities * 0.2 + partScore * 0.1 + row.finalExam * 0.4,
     )
+    overall = final > 0 ? Math.round(midterm * 0.4 + final * 0.6) : preliminary
   }
 
-  const overall = Math.round(computeOverallFromTerms(preliminary, midterm, final))
-  const trendScore = Math.round(overall * 0.75 + row.historical * 0.25)
+  if (overall <= 0) {
+    return {
+      preliminary: 0,
+      midterm: 0,
+      prefinal: 0,
+      final: 0,
+      overall: 0,
+      gpaEquiv: 'N/A',
+      status: 'Pending',
+      confidence: 0,
+      riskFactors: ['No grades encoded yet'],
+      requiredFinalScore: 75,
+      recommendation: 'Awaiting grade encoding by the assigned instructor.',
+    }
+  }
 
+  const trendScore = row.historical > 0 ? Math.round(overall * 0.75 + row.historical * 0.25) : overall
   const status = getPrediction(overall, trendScore)
   const gpaEquiv = getGPAEquivalent(overall)
 
-  // Identify risk factors
   const riskFactors: string[] = []
-  if (row.quizzes < 75) riskFactors.push(`Low Quizzes average (${row.quizzes}%)`)
-  if (row.assignments < 75) riskFactors.push(`Low Assignments average (${row.assignments}%)`)
-  if (row.activities < 75) riskFactors.push(`Low Activities average (${row.activities}%)`)
-  if (typeof row.attendance === 'number' && row.attendance < 75)
-    riskFactors.push(`Critical: Poor Attendance (${row.attendance}%)`)
-  if (typeof row.labExam === 'number' && row.labExam < 75)
-    riskFactors.push(`Weak Lab Activity score (${row.labExam}%)`)
-  if (row.midtermExam < 75) riskFactors.push(`Sub-par Midterm Exam (${row.midtermExam}%)`)
-  if (row.historical < 75) riskFactors.push(`Weak historical performance (${row.historical}%)`)
+  if (prelimEncoded && row.prelim) {
+    if (row.prelim.quiz > 0 && row.prelim.quiz < 75) riskFactors.push(`Low Quizzes average (${Math.round(row.prelim.quiz)}%)`)
+    if (row.prelim.activity > 0 && row.prelim.activity < 75) riskFactors.push(`Low Activity average (${Math.round(row.prelim.activity)}%)`)
+    if (row.prelim.attendance > 0 && row.prelim.attendance < 75) riskFactors.push(`Low Attendance (${Math.round(row.prelim.attendance)}%)`)
+    if (row.prelim.participation > 0 && row.prelim.participation < 75) riskFactors.push(`Low Participation (${Math.round(row.prelim.participation)}%)`)
+    if (row.prelim.exam > 0 && row.prelim.exam < 75) riskFactors.push(`Low Exam score (${Math.round(row.prelim.exam)}%)`)
+  }
   if (riskFactors.length === 0 && (status === 'At Risk' || status === 'Bound to Fail')) {
-    riskFactors.push(`Borderline overall grade trend (${overall}%)`)
+    riskFactors.push(`Borderline cumulative grade trend (${overall}%)`)
   }
 
-  const targetFinalExam = Math.max(0, Math.min(100, Math.ceil((75 - preliminary * 0.3 - midterm * 0.3) / 0.4)))
-  const requiredFinalScore = Number.isNaN(targetFinalExam) ? 75 : targetFinalExam
+  const targetNextRaw = Math.max(0, Math.min(100, Math.ceil((75 - overall * 0.4) / 0.6)))
+  const requiredFinalScore = Number.isNaN(targetNextRaw) ? 75 : targetNextRaw
 
   let confidence = 85
   if (status === 'Bound to Fail') confidence = 92
@@ -364,17 +690,16 @@ export function computeGrade(row: GradeRow): PredictionAnalysis {
   let recommendation = 'Performance is on track. Maintain current study habits.'
   if (status === 'Bound to Fail') {
     recommendation =
-      'CRITICAL: Urgent remedial tutoring, mandatory consultation with instructor, and retaking missed quizzes/activities required.'
+      `CRITICAL: Student needs at least ${requiredFinalScore}% raw grade in the next grading period (40% previous + 60% current) to reach passing (75%). Urgent tutoring and instructor consultation recommended.`
   } else if (status === 'At Risk') {
     recommendation =
-      'WARNING: Student needs at least ' +
-      requiredFinalScore +
-      '% in Final term to secure a passing grade. Recommend peer study group & instructor guidance.'
+      `WARNING: Student needs at least ${requiredFinalScore}% raw grade in the next grading period to secure a passing cumulative grade.`
   }
 
   return {
     preliminary,
     midterm,
+    prefinal,
     final,
     overall,
     gpaEquiv,
@@ -389,7 +714,8 @@ export function computeGrade(row: GradeRow): PredictionAnalysis {
 export function computeClassAverages(
   rows: { row: GradeRow; computed: PredictionAnalysis }[],
 ): ClassAverages {
-  if (rows.length === 0) {
+  const encodedRows = rows.filter((r) => r.computed.overall > 0)
+  if (encodedRows.length === 0) {
     return {
       quizzesAvg: 0,
       assignmentsAvg: 0,
@@ -398,24 +724,24 @@ export function computeClassAverages(
       finalAvg: 0,
       overallAvg: 0,
       gpaAvg: 'N/A',
-      totalStudents: 0,
+      totalStudents: rows.length,
       atRiskCount: 0,
       boundToFailCount: 0,
       safeCount: 0,
     }
   }
 
-  const total = rows.length
-  const quizzesAvg = Math.round(rows.reduce((sum, r) => sum + r.row.quizzes, 0) / total)
-  const assignmentsAvg = Math.round(rows.reduce((sum, r) => sum + r.row.assignments, 0) / total)
-  const activitiesAvg = Math.round(rows.reduce((sum, r) => sum + r.row.activities, 0) / total)
-  const midtermAvg = Math.round(rows.reduce((sum, r) => sum + r.computed.midterm, 0) / total)
-  const finalAvg = Math.round(rows.reduce((sum, r) => sum + r.computed.final, 0) / total)
-  const overallAvg = Math.round(rows.reduce((sum, r) => sum + r.computed.overall, 0) / total)
+  const total = encodedRows.length
+  const quizzesAvg = Math.round(encodedRows.reduce((sum, r) => sum + (r.row.quizzes || 0), 0) / total)
+  const assignmentsAvg = Math.round(encodedRows.reduce((sum, r) => sum + (r.row.assignments || 0), 0) / total)
+  const activitiesAvg = Math.round(encodedRows.reduce((sum, r) => sum + (r.row.activities || 0), 0) / total)
+  const midtermAvg = Math.round(encodedRows.reduce((sum, r) => sum + r.computed.midterm, 0) / total)
+  const finalAvg = Math.round(encodedRows.reduce((sum, r) => sum + r.computed.final, 0) / total)
+  const overallAvg = Math.round(encodedRows.reduce((sum, r) => sum + r.computed.overall, 0) / total)
   const gpaAvg = getGPAEquivalent(overallAvg)
 
-  const boundToFailCount = rows.filter((r) => r.computed.status === 'Bound to Fail').length
-  const atRiskCount = rows.filter((r) => r.computed.status === 'At Risk').length
+  const boundToFailCount = encodedRows.filter((r) => r.computed.status === 'Bound to Fail').length
+  const atRiskCount = encodedRows.filter((r) => r.computed.status === 'At Risk').length
   const safeCount = total - boundToFailCount - atRiskCount
 
   return {
@@ -426,7 +752,7 @@ export function computeClassAverages(
     finalAvg,
     overallAvg,
     gpaAvg,
-    totalStudents: total,
+    totalStudents: rows.length,
     atRiskCount,
     boundToFailCount,
     safeCount,

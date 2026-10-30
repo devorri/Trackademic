@@ -5,6 +5,7 @@ import { useData } from './DataContext'
 
 interface AuthContextType {
   activeUser: User | null
+  activeRole?: string
   setActiveUser: (user: User | null) => void
   loginEmail: string
   setLoginEmail: (email: string) => void
@@ -24,7 +25,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { setActiveSection, users, students } = useData()
-  
+
   const [activeUser, setActiveUser] = useState<User | null>(null)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginPassword, setLoginPassword] = useState('')
@@ -71,29 +72,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, email, password_plain, role, status')
+        .select('id, email, password_plain, first_name, last_name, role, status, avatar_url')
         .eq('email', trimmedEmail)
-        .single();
+        .single()
 
       if (!profileError && profile) {
         if (profile.password_plain !== trimmedPass) {
-          setLoginError('Incorrect password.');
-          return;
+          setLoginError('Incorrect password.')
+          return
+        }
+
+        if (profile.avatar_url === 'DROPPED') {
+          setLoginError('This student account is marked as Dropped Out. Contact your administrator.')
+          return
         }
 
         if (profile.status.toLowerCase() !== 'active') {
-          setLoginError('This account is inactive. Contact your administrator.');
-          return;
+          setLoginError('This account is inactive. Contact your administrator.')
+          return
         }
 
-        const normalizedRole = profile.role.toLowerCase();
-        const foundUser = {
+        const normalizedRole =
+          profile.role.toLowerCase() === 'faculty' || profile.role.toLowerCase() === 'instructor'
+            ? 'instructor'
+            : profile.role.toLowerCase() === 'admin' || profile.role.toLowerCase() === 'administrator'
+            ? 'administrator'
+            : 'student'
+
+        const fullName =
+          `${profile.first_name || ''} ${profile.last_name || ''}`.trim() ||
+          profile.email.split('@')[0]
+
+        const foundUser: User = {
           id: profile.id,
-          name: profile.email.split('@')[0],
+          profile_id: profile.id,
+          name: fullName,
           email: profile.email,
           role: normalizedRole as any,
           status: profile.status as any,
-        };
+          password: profile.password_plain,
+        }
         setActiveUser(foundUser)
         setActiveSection('overview')
         setIsLoginOpen(false)
@@ -102,14 +120,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return
       }
     } catch {
-      // Supabase query failed or unavailable, fallback to local users/students
+      // Fallback to local users/students state if offline
     }
 
-    // 2. Check local users state
+    // 2. Check loaded users state
     const localUser = users.find((u) => u.email.toLowerCase() === trimmedEmail)
     if (localUser) {
       if (localUser.password && localUser.password !== trimmedPass) {
         setLoginError('Incorrect password.')
+        return
+      }
+      if (localUser.status === 'dropped') {
+        setLoginError('This student account is marked as Dropped Out. Contact your administrator.')
         return
       }
       if (localUser.status.toLowerCase() !== 'active') {
@@ -124,19 +146,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return
     }
 
-    // 3. Check local students state
+    // 3. Check loaded students state
     const localStudent = students.find((s) => s.email?.toLowerCase() === trimmedEmail)
     if (localStudent) {
       if (localStudent.password && localStudent.password !== trimmedPass) {
         setLoginError('Incorrect password.')
         return
       }
+      if (localStudent.status === 'dropped') {
+        setLoginError('This student account is marked as Dropped Out. Contact your administrator.')
+        return
+      }
       const studentUser: User = {
-        id: localStudent.id,
+        id: localStudent.profile_id || localStudent.id,
+        profile_id: localStudent.profile_id || localStudent.id,
         name: localStudent.name || localStudent.email || trimmedEmail,
         email: localStudent.email || trimmedEmail,
         role: 'student',
-        status: 'active',
+        status: localStudent.status || 'active',
       }
       setActiveUser(studentUser)
       setActiveSection('overview')
@@ -157,6 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         activeUser,
+        activeRole: activeUser?.role,
         setActiveUser,
         loginEmail,
         setLoginEmail,

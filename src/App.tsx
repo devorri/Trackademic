@@ -9,6 +9,7 @@ import { AdminOverview } from './components/admin/AdminOverview'
 import { InstructorManagement } from './components/admin/InstructorManagement'
 import { StudentManagement } from './components/admin/StudentManagement'
 import { SubjectManagement } from './components/admin/SubjectManagement'
+import { AdminGrades } from './components/admin/AdminGrades'
 import { AdminPredictiveAnalytics } from './components/admin/AdminPredictiveAnalytics'
 import { AdminNotifications } from './components/admin/AdminNotifications'
 import { ActivityLogs } from './components/admin/ActivityLogs'
@@ -57,6 +58,7 @@ function DashboardContent() {
             {(activeSection === 'instructors' || activeSection === 'users') && <InstructorManagement />}
             {activeSection === 'students' && <StudentManagement />}
             {activeSection === 'classes' && <SubjectManagement />}
+            {(activeSection === 'grades' || activeSection === 'gradebook') && <AdminGrades />}
             {activeSection === 'predictive_analytics' && <AdminPredictiveAnalytics />}
             {activeSection === 'reports' && <ReportPanel />}
             {activeSection === 'notifications' && <AdminNotifications />}

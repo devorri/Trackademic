@@ -1,424 +1,325 @@
-import React, { useState } from 'react'
-import { useData } from '../../context/DataContext'
-import { formatCourseSection } from '../../utils/helpers'
-import { TrendingUp, AlertTriangle, CheckCircle, Award, Search, FileText } from 'lucide-react'
+import React, { useState, useMemo } from 'react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Sparkles,
+  Users,
+  Search
+} from 'lucide-react';
+import { useData } from '../../context/DataContext';
+import { formatCourseSection, isTermEncoded } from '../../utils/helpers';
 
 export const AdminPredictiveAnalytics: React.FC = () => {
-  const { allComputedRows, students, setActiveSection } = useData()
-  const [filter, setFilter] = useState<'ALL' | 'AT_RISK' | 'ON_TRACK' | 'HIGH'>('ALL')
-  const [searchTerm, setSearchTerm] = useState('')
+  const { students, classes, detailedGrades } = useData();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('All');
 
-  // Build the list of analyzed students from computed rows, plus sample benchmarks
-  const benchmarkRows = [
-    {
-      studentName: 'Student A',
-      studentNo: '2026-005',
-      courseSection: 'CIT A',
-      currentPerformance: 72,
-      prediction: 74,
-      status: 'At Risk',
-      riskFactor: 'Below 75% passing threshold; needs remedial exams',
-    },
-    {
-      studentName: 'Student B',
-      studentNo: '2026-006',
-      courseSection: 'CIT A',
-      currentPerformance: 84,
-      prediction: 86,
-      status: 'On Track',
-      riskFactor: 'Stable performance, progressing normally',
-    },
-    {
-      studentName: 'Student C',
-      studentNo: '2026-007',
-      courseSection: 'CIT B',
-      currentPerformance: 91,
-      prediction: 93,
-      status: 'High',
-      riskFactor: 'Dean\u2019s Lister standing; high academic excellence',
-    },
-  ]
+  // Compute real student performance across all enrolled classes (zero fake/benchmark rows)
+  const studentAnalyticsList = useMemo(() => {
+    return students.map((student) => {
+      const enrolledClasses = classes.filter(
+        (c) =>
+          (c.studentIds || c.student_ids || []).includes(student.id) ||
+          c.students?.some((s) => s.id === student.id),
+      );
 
-  // Synthesize with active class students
-  const activeStudentList = students.map((st) => {
-    const studentRows = allComputedRows.filter((r) => r.student?.id === st.id || r.student?.name === st.name)
-    const avgOverall =
-      studentRows.length > 0
-        ? Math.round(studentRows.reduce((acc, r) => acc + r.computed.overall, 0) / studentRows.length)
-        : st.name === 'Liam'
-        ? 85
-        : st.name === 'Kissy S.'
-        ? 89
-        : 82
+      let prelimSum = 0;
+      let prelimCount = 0;
+      let midtermSum = 0;
+      let midtermCount = 0;
+      let prefinalSum = 0;
+      let prefinalCount = 0;
+      let finalSum = 0;
+      let finalCount = 0;
+      let currentSum = 0;
+      let currentCount = 0;
+      let predictedSum = 0;
+      let predictedCount = 0;
 
-    const prediction = Math.min(100, avgOverall + 2)
-    let status: 'At Risk' | 'On Track' | 'High' = 'On Track'
-    if (avgOverall < 75) status = 'At Risk'
-    else if (avgOverall >= 90) status = 'High'
+      enrolledClasses.forEach((cls) => {
+        const sheets = detailedGrades[cls.id] || [];
+        const sheet = sheets.find((s) => s.studentId === student.id);
+        if (!sheet) return;
 
-    return {
-      studentName: st.name || 'Student',
-      studentNo: st.student_no || st.studentNo || '2026-001',
-      courseSection: formatCourseSection(st.course, st.section_label),
-      currentPerformance: avgOverall,
-      prediction,
-      status,
-      riskFactor: status === 'At Risk' ? 'Needs intervention to pass final term' : 'Consistent course completion',
-    }
-  })
+        if (isTermEncoded(sheet.prelim)) {
+          prelimSum += Math.round(sheet.prelim.termGrade);
+          prelimCount++;
+        }
+        if (isTermEncoded(sheet.midterm)) {
+          midtermSum += Math.round(sheet.midterm.termGrade);
+          midtermCount++;
+        }
+        if (isTermEncoded(sheet.prefinal) && sheet.prefinal) {
+          prefinalSum += Math.round(sheet.prefinal.termGrade);
+          prefinalCount++;
+        }
+        if (isTermEncoded(sheet.final)) {
+          finalSum += Math.round(sheet.final.termGrade);
+          finalCount++;
+        }
+        if (sheet.overallGrade > 0) {
+          currentSum += Math.round(sheet.overallGrade);
+          currentCount++;
+          predictedSum += Math.round(sheet.predictedFinal || sheet.overallGrade);
+          predictedCount++;
+        }
+      });
 
-  // Combine ensuring Student A, B, C are prominent
-  const combinedList = [
-    ...benchmarkRows,
-    ...activeStudentList.filter((s) => !benchmarkRows.some((b) => b.studentName === s.studentName)),
-  ]
+      const hasEncoded = currentCount > 0;
+      const currentGrade = hasEncoded ? Math.round(currentSum / currentCount) : null;
+      const predictedGrade = predictedCount > 0 ? Math.round(predictedSum / predictedCount) : null;
 
-  // Totals as specified in user prompt: 150 analyzed, 15 at risk, 110 on track, 25 high performing
-  const totalAnalyzed = 150
-  const totalAtRisk = 15
-  const totalOnTrack = 110
-  const totalHigh = 25
+      let status: 'High Performing' | 'On Track' | 'At Risk' | 'Not Encoded' = 'Not Encoded';
+      let trend = 'Pending Grades';
+      if (currentGrade !== null) {
+        if (currentGrade >= 85) {
+          status = 'High Performing';
+          trend = 'Excelling';
+        } else if (currentGrade >= 75) {
+          status = 'On Track';
+          trend = 'Stable';
+        } else {
+          status = 'At Risk';
+          trend = 'Needs Intervention';
+        }
+      }
 
-  const filteredList = combinedList.filter((item) => {
-    if (filter === 'AT_RISK' && item.status !== 'At Risk') return false
-    if (filter === 'ON_TRACK' && item.status !== 'On Track') return false
-    if (filter === 'HIGH' && item.status !== 'High') return false
+      return {
+        id: student.id,
+        studentNo: student.student_no || student.id,
+        name: student.name,
+        course: formatCourseSection(student.course),
+        year: student.year,
+        studentStatus: student.status || 'active',
+        prelim: prelimCount > 0 ? Math.round(prelimSum / prelimCount) : null,
+        midterm: midtermCount > 0 ? Math.round(midtermSum / midtermCount) : null,
+        prefinal: prefinalCount > 0 ? Math.round(prefinalSum / prefinalCount) : null,
+        final: finalCount > 0 ? Math.round(finalSum / finalCount) : null,
+        currentGrade,
+        predictedGrade,
+        status,
+        trend
+      };
+    });
+  }, [students, classes, detailedGrades]);
 
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase()
-      return (
-        item.studentName.toLowerCase().includes(q) ||
-        item.studentNo.toLowerCase().includes(q) ||
-        item.courseSection.toLowerCase().includes(q) ||
-        item.status.toLowerCase().includes(q)
-      )
-    }
-    return true
-  })
+  const filteredStudents = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return studentAnalyticsList.filter((s) => {
+      const matchesSearch =
+        !q ||
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.course || '').toLowerCase().includes(q) ||
+        (s.studentNo || '').toLowerCase().includes(q);
+      const matchesFilter = filterStatus === 'All' || s.status === filterStatus;
+      return matchesSearch && matchesFilter;
+    });
+  }, [studentAnalyticsList, searchQuery, filterStatus]);
+
+  const totalAnalyzed = studentAnalyticsList.filter((s) => s.currentGrade !== null).length;
+  const totalAtRisk = studentAnalyticsList.filter((s) => s.status === 'At Risk').length;
+  const totalOnTrack = studentAnalyticsList.filter((s) => s.status === 'On Track').length;
+  const totalHigh = studentAnalyticsList.filter((s) => s.status === 'High Performing').length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem' }}>
-      {/* Header Banner */}
-      <div
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 4px 16px -2px rgba(15, 23, 42, 0.05)',
-          borderRadius: '16px',
-          padding: '1.6rem 2rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
+    <section className="content-section">
+      <div className="section-header">
         <div>
-          <span
-            style={{
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-              letterSpacing: '0.08em',
-              color: '#6d28d9',
-              background: '#f5f3ff',
-              border: '1px solid #ddd6fe',
-              padding: '0.25rem 0.65rem',
-              borderRadius: '999px',
-            }}
-          >
-            Predictive Analytics Engine
-          </span>
-          <h2 style={{ margin: '0.5rem 0 0.25rem 0', fontSize: '1.6rem', color: '#0f172a', fontWeight: 800 }}>
-            Predictive Analytics Overview
-          </h2>
-          <p style={{ margin: 0, color: '#475569', fontSize: '0.92rem' }}>
-            Grades are automatically analyzed from class records without requiring manual encoding by admin.
+          <h1>Predictive Analytics Overview</h1>
+          <p className="section-subtitle">
+            Real-time academic forecasting based strictly on actual encoded student grades.
           </p>
         </div>
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={() => setActiveSection('reports')}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}
-        >
-          <FileText size={16} /> Generate Analytics Report
-        </button>
       </div>
 
-      {/* 4 Overview Metrics Cards */}
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '1.2rem',
-        }}
-      >
-        {/* Student Analyzed: 150 */}
-        <div
-          onClick={() => setFilter('ALL')}
-          style={{
-            background: filter === 'ALL' ? '#eff6ff' : '#ffffff',
-            border: filter === 'ALL' ? '2px solid #2563eb' : '1px solid #e2e8f0',
-            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              Student Analyzed
-            </span>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: '#eff6ff',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#2563eb',
-              }}
-            >
-              <TrendingUp size={18} />
-            </div>
+      {/* Summary Cards */}
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#2563eb' }}>
+            <Users size={18} />
           </div>
-          <div style={{ marginTop: '0.8rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>{totalAnalyzed}</strong>
-            <small style={{ display: 'block', color: '#2563eb', marginTop: '0.3rem', fontWeight: 600 }}>Total cohort evaluated</small>
-          </div>
-        </div>
-
-        {/* At Risk: 15 */}
-        <div
-          onClick={() => setFilter('AT_RISK')}
-          style={{
-            background: filter === 'AT_RISK' ? '#fee2e2' : '#fff5f5',
-            border: filter === 'AT_RISK' ? '2px solid #dc2626' : '1px solid #fecaca',
-            boxShadow: '0 4px 14px rgba(239, 68, 68, 0.05)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#991b1b', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              At Risk
-            </span>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: '#fee2e2',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#dc2626',
-              }}
-            >
-              <AlertTriangle size={18} />
-            </div>
-          </div>
-          <div style={{ marginTop: '0.8rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#dc2626', lineHeight: 1.1 }}>{totalAtRisk}</strong>
-            <small style={{ display: 'block', color: '#b91c1c', marginTop: '0.3rem', fontWeight: 600 }}>
-              Current performance &lt;75%
-            </small>
-          </div>
-        </div>
-
-        {/* On Track: 110 */}
-        <div
-          onClick={() => setFilter('ON_TRACK')}
-          style={{
-            background: filter === 'ON_TRACK' ? '#dcfce7' : '#f0fdf4',
-            border: filter === 'ON_TRACK' ? '2px solid #16a34a' : '1px solid #bbf7d0',
-            boxShadow: '0 4px 14px rgba(22, 163, 74, 0.05)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              On Track
-            </span>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: '#dcfce7',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#16a34a',
-              }}
-            >
-              <CheckCircle size={18} />
-            </div>
-          </div>
-          <div style={{ marginTop: '0.8rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#16a34a', lineHeight: 1.1 }}>{totalOnTrack}</strong>
-            <small style={{ display: 'block', color: '#15803d', marginTop: '0.3rem', fontWeight: 600 }}>75% – 89% passing pace</small>
-          </div>
-        </div>
-
-        {/* High Performing: 25 */}
-        <div
-          onClick={() => setFilter('HIGH')}
-          style={{
-            background: filter === 'HIGH' ? '#ede9fe' : '#f5f3ff',
-            border: filter === 'HIGH' ? '2px solid #7c3aed' : '1px solid #ddd6fe',
-            boxShadow: '0 4px 14px rgba(124, 58, 237, 0.05)',
-            borderRadius: '16px',
-            padding: '1.4rem',
-            cursor: 'pointer',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#5b21b6', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              High Performing
-            </span>
-            <div
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '10px',
-                background: '#ede9fe',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#7c3aed',
-              }}
-            >
-              <Award size={18} />
-            </div>
-          </div>
-          <div style={{ marginTop: '0.8rem' }}>
-            <strong style={{ fontSize: '2.4rem', fontWeight: 800, color: '#7c3aed', lineHeight: 1.1 }}>{totalHigh}</strong>
-            <small style={{ display: 'block', color: '#6d28d9', marginTop: '0.3rem', fontWeight: 600 }}>90%+ academic excellence</small>
-          </div>
-        </div>
-      </section>
-
-      {/* Predictive List Table */}
-      <section className="panel data-card" style={{ padding: '1.5rem' }}>
-        <div className="card-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div>
-            <h3 style={{ margin: 0, color: '#0f172a' }}>Predictive Cohort List</h3>
-            <span className="chip" style={{ marginTop: '0.3rem' }}>
-              Detailed predictions calculated from quizzes, midterms, activities, and historical grades
-            </span>
+            <p className="stat-label">Graded Students Analyzed</p>
+            <p className="stat-value">{totalAnalyzed}</p>
+            <p className="stat-sub">Out of {students.length} registered students</p>
+          </div>
+        </article>
+
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#dc2626' }}>
+            <AlertTriangle size={18} />
+          </div>
+          <div>
+            <p className="stat-label">At Risk Students</p>
+            <p className="stat-value">{totalAtRisk}</p>
+            <p className="stat-sub">Average below 75%</p>
+          </div>
+        </article>
+
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#d97706' }}>
+            <CheckCircle2 size={18} />
+          </div>
+          <div>
+            <p className="stat-label">On Track</p>
+            <p className="stat-value">{totalOnTrack}</p>
+            <p className="stat-sub">Maintaining 75% – 84%</p>
+          </div>
+        </article>
+
+        <article className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(16, 185, 129, 0.12)', color: '#16a34a' }}>
+            <Sparkles size={18} />
+          </div>
+          <div>
+            <p className="stat-label">High Performing</p>
+            <p className="stat-value">{totalHigh}</p>
+            <p className="stat-sub">Average 85% and above</p>
+          </div>
+        </article>
+      </div>
+
+      {/* Student Prediction List */}
+      <article className="panel" style={{ marginTop: '24px' }}>
+        <div className="panel-header" style={{ flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h2>Student Performance Predictions</h2>
+            <p>All grades are rounded to whole numbers from real encoded class records.</p>
           </div>
 
-          <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center' }}>
-            <div style={{ position: 'relative', width: '240px' }}>
-              <input
-                placeholder="Search student or status..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ width: '100%', paddingLeft: '2.2rem', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative' }}>
+              <Search
+                size={16}
+                style={{
+                  position: 'absolute',
+                  left: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#64748b'
+                }}
               />
-              <Search size={14} style={{ position: 'absolute', left: '0.8rem', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+              <input
+                type="search"
+                className="search-input"
+                placeholder="Search student or course..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: '36px', width: '240px' }}
+              />
             </div>
+
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                color: '#0f172a',
+                fontSize: '0.85rem',
+                fontWeight: 600
+              }}
+            >
+              <option value="All">All Statuses</option>
+              <option value="At Risk">At Risk</option>
+              <option value="On Track">On Track</option>
+              <option value="High Performing">High Performing</option>
+              <option value="Not Encoded">Not Encoded</option>
+            </select>
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto', marginTop: '1.2rem' }}>
+        <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Course & Section</th>
-                <th>Current Performance</th>
-                <th>Prediction</th>
+                <th>Student Name</th>
+                <th>Course &amp; Section</th>
+                <th>Prelim</th>
+                <th>Midterm</th>
+                <th>Pre-Final</th>
+                <th>Current Avg</th>
+                <th>Predicted Final</th>
                 <th>Status</th>
-                <th>Insight / Guidance</th>
               </tr>
             </thead>
             <tbody>
-              {filteredList.length === 0 ? (
-                <tr>
-                  <td colSpan={6} style={{ textAlign: 'center', color: '#64748b', padding: '1.8rem' }}>
-                    No student predictions match the current filter.
+              {filteredStudents.map((student) => (
+                <tr key={student.id}>
+                  <td>
+                    <strong style={{ color: '#0f172a', display: 'block' }}>{student.name}</strong>
+                    <small style={{ color: '#64748b' }}>ID: {student.studentNo}</small>
                   </td>
-                </tr>
-              ) : (
-                filteredList.map((item, idx) => {
-                  const isAtRisk = item.status === 'At Risk'
-                  const isHigh = item.status === 'High'
-
-                  return (
-                    <tr
-                      key={idx}
+                  <td>{student.course}</td>
+                  <td>{student.prelim !== null ? `${student.prelim}%` : '—'}</td>
+                  <td>{student.midterm !== null ? `${student.midterm}%` : '—'}</td>
+                  <td>{student.prefinal !== null ? `${student.prefinal}%` : '—'}</td>
+                  <td>
+                    <strong style={{ color: '#0f172a' }}>
+                      {student.currentGrade !== null ? `${student.currentGrade}%` : '—'}
+                    </strong>
+                  </td>
+                  <td>
+                    <strong
                       style={{
-                        background: isAtRisk ? '#fff5f5' : undefined,
-                        borderLeft: isAtRisk ? '4px solid #dc2626' : isHigh ? '4px solid #7c3aed' : undefined,
+                        color:
+                          student.predictedGrade === null
+                            ? '#64748b'
+                            : student.predictedGrade >= 85
+                            ? '#15803d'
+                            : student.predictedGrade >= 75
+                            ? '#1d4ed8'
+                            : '#b91c1c'
                       }}
                     >
-                      <td>
-                        <strong style={{ color: '#0f172a' }}>{item.studentName}</strong>
-                        <small style={{ color: '#64748b' }}>ID: {item.studentNo}</small>
-                      </td>
-                      <td>
-                        <span className="chip" style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #e2e8f0' }}>
-                          {item.courseSection}
-                        </span>
-                      </td>
-                      <td>
-                        <strong style={{ fontSize: '1.05rem', color: isAtRisk ? '#dc2626' : '#0f172a' }}>
-                          {item.currentPerformance}%
-                        </strong>
-                      </td>
-                      <td>
-                        <strong style={{ fontSize: '1.05rem', color: isAtRisk ? '#b45309' : '#2563eb' }}>
-                          {item.prediction}%
-                        </strong>
-                      </td>
-                      <td>
-                        <span
-                          style={{
-                            padding: '0.3rem 0.75rem',
-                            borderRadius: '999px',
-                            fontSize: '0.78rem',
-                            fontWeight: 700,
-                            background: isAtRisk
-                              ? '#fee2e2'
-                              : isHigh
-                              ? '#ede9fe'
-                              : '#dcfce7',
-                            color: isAtRisk ? '#b91c1c' : isHigh ? '#6d28d9' : '#15803d',
-                            border: isAtRisk
-                              ? '1px solid #fecaca'
-                              : isHigh
-                              ? '1px solid #ddd6fe'
-                              : '1px solid #bbf7d0',
-                          }}
-                        >
-                          {item.status}
-                        </span>
-                      </td>
-                      <td>
-                        <small style={{ color: '#475569', fontSize: '0.85rem' }}>{item.riskFactor}</small>
-                      </td>
-                    </tr>
-                  )
-                })
+                      {student.predictedGrade !== null ? `${student.predictedGrade}%` : '—'}
+                    </strong>
+                  </td>
+                  <td>
+                    <span
+                      style={{
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        background:
+                          student.status === 'High Performing'
+                            ? '#dcfce7'
+                            : student.status === 'On Track'
+                            ? '#eff6ff'
+                            : student.status === 'At Risk'
+                            ? '#fee2e2'
+                            : '#f1f5f9',
+                        color:
+                          student.status === 'High Performing'
+                            ? '#15803d'
+                            : student.status === 'On Track'
+                            ? '#1d4ed8'
+                            : student.status === 'At Risk'
+                            ? '#b91c1c'
+                            : '#64748b'
+                      }}
+                    >
+                      {student.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {filteredStudents.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="empty-cell">
+                    No students match the selected filter criteria.
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
-      </section>
-    </div>
-  )
-}
+      </article>
+    </section>
+  );
+};
 
-export default AdminPredictiveAnalytics
+export default AdminPredictiveAnalytics;

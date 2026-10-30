@@ -1,31 +1,51 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { useData } from '../../context/DataContext'
-import { formatCourseSection, normalizeCourseSection } from '../../utils/helpers'
+import { formatCourseSection } from '../../utils/helpers'
+import { dbProfiles, dbStudents } from '../../utils/db'
 import { User, Mail, BookOpen, Key, Edit, Check, Hash, Calendar, GraduationCap } from 'lucide-react'
 
 export const StudentProfile: React.FC = () => {
   const { activeUser, setActiveUser } = useAuth()
   const { students, setStudents } = useData()
 
-  // Find linked student record or default to first student
-  const studentData = students.find((s) => s.email === activeUser?.email || s.name === activeUser?.name) || students[0]
+  const studentData =
+    students.find(
+      (s) =>
+        s.profile_id === activeUser?.id ||
+        s.id === activeUser?.id ||
+        (activeUser?.email && s.email?.toLowerCase() === activeUser.email.toLowerCase()) ||
+        (activeUser?.name && s.name?.toLowerCase() === activeUser.name.toLowerCase()),
+    ) || students[0]
 
   const [isEditing, setIsEditing] = useState(false)
   const [isChangingPass, setIsChangingPass] = useState(false)
 
-  const [name, setName] = useState(activeUser?.name || studentData?.name || 'Juan Dela Cruz')
-  const [studentId, setStudentId] = useState(studentData?.student_no || studentData?.studentNo || '2026-001')
-  const [program, setProgram] = useState('CIT')
-  const [year, setYear] = useState('2nd Year')
-  const [section, setSection] = useState(formatCourseSection(studentData?.course, studentData?.section_label))
-  const [email, setEmail] = useState(activeUser?.email || studentData?.email || 'student@example.com')
+  const [name, setName] = useState(studentData?.name || activeUser?.name || 'Student')
+  const [studentId, setStudentId] = useState(studentData?.student_no || studentData?.studentNo || 'N/A')
+  const [program, setProgram] = useState(studentData?.course || 'BSIT')
+  const [year, setYear] = useState(`${studentData?.year_level || 1}`)
+  const [section, setSection] = useState(
+    formatCourseSection(studentData?.course, studentData?.section_label),
+  )
+  const [email, setEmail] = useState(studentData?.email || activeUser?.email || '')
+
+  useEffect(() => {
+    if (studentData) {
+      setName(studentData.name || activeUser?.name || 'Student')
+      setStudentId(studentData.student_no || studentData.studentNo || 'N/A')
+      setProgram(studentData.course || 'BSIT')
+      setYear(`${studentData.year_level || 1}`)
+      setSection(formatCourseSection(studentData.course, studentData.section_label))
+      setEmail(studentData.email || activeUser?.email || '')
+    }
+  }, [studentData, activeUser])
 
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
 
-  function handleSaveProfile(e: React.FormEvent) {
+  async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault()
     if (activeUser) {
       setActiveUser({
@@ -34,8 +54,6 @@ export const StudentProfile: React.FC = () => {
         email,
       })
     }
-
-    const normalized = normalizeCourseSection('CIT', section)
 
     if (studentData) {
       setStudents((current) =>
@@ -46,27 +64,43 @@ export const StudentProfile: React.FC = () => {
                 name,
                 student_no: studentId,
                 studentNo: studentId,
-                course: normalized.course,
-                section_label: normalized.section_label,
                 email,
               }
             : s,
         ),
       )
+      const nameParts = name.trim().split(' ')
+      if (studentData.profile_id) {
+        await dbProfiles
+          .update(studentData.profile_id, {
+            first_name: nameParts[0] || 'Student',
+            last_name: nameParts.slice(1).join(' ') || '',
+            email: email.trim().toLowerCase(),
+          })
+          .catch(() => {})
+      }
+      await dbStudents
+        .update(studentData.id, {
+          student_no: studentId,
+        })
+        .catch(() => {})
     }
 
-    setProgram(normalized.course)
-    setSection(formatCourseSection(normalized.course, normalized.section_label))
     setIsEditing(false)
     setNotice('Student profile information successfully saved!')
     setTimeout(() => setNotice(null), 3000)
   }
 
-  function handleChangePassword(e: React.FormEvent) {
+  async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
     if (newPassword !== confirmPassword) {
       alert('Passwords do not match!')
       return
+    }
+    if (studentData?.profile_id) {
+      await dbProfiles
+        .update(studentData.profile_id, { password_plain: newPassword })
+        .catch(() => {})
     }
     setNewPassword('')
     setConfirmPassword('')
@@ -95,7 +129,6 @@ export const StudentProfile: React.FC = () => {
         </div>
       )}
 
-      {/* Main Profile Card */}
       <section
         style={{
           padding: '2rem',
@@ -143,7 +176,9 @@ export const StudentProfile: React.FC = () => {
             <h3 style={{ margin: '0.4rem 0 0.2rem 0', fontSize: '1.6rem', color: '#0f172a', fontWeight: 800 }}>
               {name}
             </h3>
-            <p style={{ margin: 0, color: '#475569', fontSize: '0.92rem' }}>Student ID: {studentId} • {email}</p>
+            <p style={{ margin: 0, color: '#475569', fontSize: '0.92rem' }}>
+              Student ID: {studentId} • {email}
+            </p>
           </div>
         </div>
 
@@ -177,10 +212,10 @@ export const StudentProfile: React.FC = () => {
 
           <div style={{ background: '#f8fafc', padding: '1.1rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
             <span style={{ fontSize: '0.78rem', color: '#64748b', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700 }}>
-              <Calendar size={15} color="#d97706" /> Year
+              <Calendar size={15} color="#d97706" /> Year Level
             </span>
             <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#b45309', marginTop: '0.3rem' }}>
-              {year}
+              Year {year}
             </div>
           </div>
 
@@ -203,7 +238,6 @@ export const StudentProfile: React.FC = () => {
           </div>
         </div>
 
-        {/* Action Buttons: Edit Profile, Change Password */}
         <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
           <button
             type="button"
@@ -241,7 +275,6 @@ export const StudentProfile: React.FC = () => {
         </div>
       </section>
 
-      {/* Edit Profile Form */}
       {isEditing && (
         <form
           onSubmit={handleSaveProfile}
@@ -302,52 +335,6 @@ export const StudentProfile: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#334155', fontWeight: 600, marginBottom: '0.35rem' }}>
-                  Year *
-                </label>
-                <input
-                  type="text"
-                  value={year}
-                  onChange={(e) => setYear(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.9rem',
-                    borderRadius: '10px',
-                    background: '#ffffff',
-                    color: '#0f172a',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.9rem',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', color: '#334155', fontWeight: 600, marginBottom: '0.35rem' }}>
-                  Course & Section *
-                </label>
-                <select
-                  value={section === 'CIT B' ? 'CIT B' : 'CIT A'}
-                  onChange={(e) => setSection(e.target.value as 'CIT A' | 'CIT B')}
-                  style={{
-                    width: '100%',
-                    padding: '0.65rem 0.9rem',
-                    borderRadius: '10px',
-                    background: '#ffffff',
-                    color: '#0f172a',
-                    border: '1.5px solid #cbd5e1',
-                    fontSize: '0.9rem',
-                    fontWeight: 700,
-                  }}
-                >
-                  <option value="CIT A">CIT A</option>
-                  <option value="CIT B">CIT B</option>
-                </select>
-              </div>
-            </div>
-
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', color: '#334155', fontWeight: 600, marginBottom: '0.35rem' }}>
                 Email Address *
@@ -393,7 +380,6 @@ export const StudentProfile: React.FC = () => {
         </form>
       )}
 
-      {/* Change Password Form */}
       {isChangingPass && (
         <form
           onSubmit={handleChangePassword}

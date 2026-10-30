@@ -1,12 +1,14 @@
-import React, { useState } from 'react'
-import { Eye, EyeOff, Search, Plus, BookOpen, User } from 'lucide-react'
-import { useData, blankUser } from '../../context/DataContext'
-import type { Role, UserStatus } from '../../utils/types'
+import React, { useState } from 'react';
+import { Eye, EyeOff, Search, Plus, BookOpen, User } from 'lucide-react';
+import { useData, blankUser } from '../../context/DataContext';
+import { dbProfiles } from '../../utils/db';
+import { formatCourseSection } from '../../utils/helpers';
+import type { Role, UserStatus } from '../../utils/types';
 
 export const InstructorManagement: React.FC = () => {
-  const [showPassword, setShowPassword] = useState(false)
-  const [instructorSearch, setInstructorSearch] = useState('')
-  const [viewingInstructorId, setViewingInstructorId] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false);
+  const [instructorSearch, setInstructorSearch] = useState('');
+  const [viewingInstructorId, setViewingInstructorId] = useState<string | null>(null);
 
   const {
     users,
@@ -16,28 +18,38 @@ export const InstructorManagement: React.FC = () => {
     setUserForm,
     editingUserId,
     setEditingUserId,
-    handleSaveUser,
-  } = useData()
+    handleSaveUser
+  } = useData();
 
   function handleCancelEdit() {
-    setEditingUserId(null)
-    setUserForm(blankUser)
+    setEditingUserId(null);
+    setUserForm(blankUser);
   }
 
-  // Filter only instructors
-  const instructorUsers = users.filter((u) => u.role === 'instructor')
+  const instructorUsers = users.filter((u) => u.role === 'instructor');
 
   const filteredInstructors = instructorUsers.filter((u) =>
     [u.name, u.email, u.status]
       .join(' ')
       .toLowerCase()
-      .includes(instructorSearch.toLowerCase()),
-  )
+      .includes(instructorSearch.toLowerCase())
+  );
 
-  const viewingInstructor = users.find((u) => u.id === viewingInstructorId)
+  const getInstructorAssignedClasses = (inst: { id: string; email?: string }) =>
+    classes.filter(
+      (c) =>
+        c.instructor_id === inst.id ||
+        c.instructor?.id === inst.id ||
+        c.instructor?.profile_id === inst.id ||
+        (inst.email &&
+          c.instructor?.email &&
+          c.instructor.email.toLowerCase() === inst.email.toLowerCase())
+    );
+
+  const viewingInstructor = users.find((u) => u.id === viewingInstructorId);
   const instructorAssignedClasses = viewingInstructor
-    ? classes.filter((c) => c.instructor_id === viewingInstructor.id || c.instructor?.id === viewingInstructor.id)
-    : []
+    ? getInstructorAssignedClasses(viewingInstructor)
+    : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem' }}>
@@ -54,21 +66,38 @@ export const InstructorManagement: React.FC = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#60a5fa',
+                color: '#2563eb'
               }}
             >
               {editingUserId ? <User size={18} /> : <Plus size={18} />}
             </div>
-            <h3 style={{ margin: 0 }}>{editingUserId ? 'Edit Instructor Details' : 'Add New Instructor'}</h3>
+            <h3 style={{ margin: 0, color: '#0f172a' }}>
+              {editingUserId ? 'Edit Instructor Details' : 'Add New Instructor'}
+            </h3>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', marginTop: '0.5rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.9rem',
+              marginTop: '0.8rem'
+            }}
+          >
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.3rem' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.82rem',
+                  color: '#334155',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem'
+                }}
+              >
                 Full Name *
               </label>
               <input
-                placeholder="e.g. Mr. Reyes / Kissy S."
+                placeholder="e.g. Kissy Labad"
                 value={userForm.name}
                 onChange={(event) => setUserForm({ ...userForm, name: event.target.value })}
                 required
@@ -76,12 +105,20 @@ export const InstructorManagement: React.FC = () => {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.3rem' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.82rem',
+                  color: '#334155',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem'
+                }}
+              >
                 Email Address *
               </label>
               <input
                 type="email"
-                placeholder="e.g. kissy@gmail.com / reyes@example.com"
+                placeholder="e.g. instructor@trackademic.edu"
                 value={userForm.email}
                 onChange={(event) => setUserForm({ ...userForm, email: event.target.value })}
                 required
@@ -89,8 +126,16 @@ export const InstructorManagement: React.FC = () => {
             </div>
 
             <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.3rem' }}>
-                Account Password *
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '0.82rem',
+                  color: '#334155',
+                  fontWeight: 600,
+                  marginBottom: '0.3rem'
+                }}
+              >
+                Account Password {editingUserId ? '(Leave blank to keep)' : '*'}
               </label>
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input
@@ -109,11 +154,11 @@ export const InstructorManagement: React.FC = () => {
                     right: '0.5rem',
                     background: 'none',
                     border: 'none',
-                    color: '#9ca3af',
+                    color: '#64748b',
                     cursor: 'pointer',
                     padding: '0.2rem',
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: 'center'
                   }}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
@@ -124,12 +169,22 @@ export const InstructorManagement: React.FC = () => {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.3rem' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.82rem',
+                    color: '#334155',
+                    fontWeight: 600,
+                    marginBottom: '0.3rem'
+                  }}
+                >
                   Role *
                 </label>
                 <select
                   value={userForm.role}
-                  onChange={(event) => setUserForm({ ...userForm, role: event.target.value as Role })}
+                  onChange={(event) =>
+                    setUserForm({ ...userForm, role: event.target.value as Role })
+                  }
                 >
                   <option value="instructor">Instructor</option>
                   <option value="administrator">Administrator</option>
@@ -137,12 +192,22 @@ export const InstructorManagement: React.FC = () => {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', color: '#9ca3af', marginBottom: '0.3rem' }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '0.82rem',
+                    color: '#334155',
+                    fontWeight: 600,
+                    marginBottom: '0.3rem'
+                  }}
+                >
                   Status *
                 </label>
                 <select
                   value={userForm.status}
-                  onChange={(event) => setUserForm({ ...userForm, status: event.target.value as UserStatus })}
+                  onChange={(event) =>
+                    setUserForm({ ...userForm, status: event.target.value as UserStatus })
+                  }
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
@@ -158,7 +223,15 @@ export const InstructorManagement: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleCancelEdit}
-                  style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}
+                  style={{
+                    background: '#f1f5f9',
+                    color: '#334155',
+                    border: '1px solid #cbd5e1',
+                    padding: '0.6rem 1rem',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
                 >
                   Cancel
                 </button>
@@ -169,9 +242,18 @@ export const InstructorManagement: React.FC = () => {
 
         {/* Instructors Directory Table */}
         <div className="panel data-card">
-          <div className="card-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div
+            className="card-heading"
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '12px'
+            }}
+          >
             <div>
-              <h3 style={{ margin: 0 }}>Instructor Directory</h3>
+              <h3 style={{ margin: 0, color: '#0f172a' }}>Instructor Directory</h3>
               <span className="chip" style={{ marginTop: '0.3rem' }}>
                 {instructorUsers.length} Registered Instructors
               </span>
@@ -183,7 +265,16 @@ export const InstructorManagement: React.FC = () => {
                 onChange={(event) => setInstructorSearch(event.target.value)}
                 style={{ width: '100%', paddingLeft: '2rem' }}
               />
-              <Search size={14} style={{ position: 'absolute', left: '0.7rem', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+              <Search
+                size={14}
+                style={{
+                  position: 'absolute',
+                  left: '0.7rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  color: '#64748b'
+                }}
+              />
             </div>
           </div>
 
@@ -191,7 +282,7 @@ export const InstructorManagement: React.FC = () => {
             <table>
               <thead>
                 <tr>
-                  <th>Instructor Name & Email</th>
+                  <th>Instructor Name &amp; Email</th>
                   <th>Assigned Classes</th>
                   <th>Status</th>
                   <th>Actions</th>
@@ -200,37 +291,41 @@ export const InstructorManagement: React.FC = () => {
               <tbody>
                 {filteredInstructors.length === 0 ? (
                   <tr>
-                    <td colSpan={4} style={{ textAlign: 'center', color: '#9ca3af', padding: '1.8rem' }}>
+                    <td
+                      colSpan={4}
+                      style={{ textAlign: 'center', color: '#64748b', padding: '1.8rem' }}
+                    >
                       No instructors found matching "{instructorSearch}"
                     </td>
                   </tr>
                 ) : (
                   filteredInstructors.map((inst) => {
-                    const assigned = classes.filter(
-                      (c) => c.instructor_id === inst.id || c.instructor?.id === inst.id,
-                    )
+                    const assigned = getInstructorAssignedClasses(inst);
 
                     return (
                       <tr key={inst.id}>
                         <td>
-                          <strong>{inst.name}</strong>
-                          <small>{inst.email}</small>
+                          <strong style={{ color: '#0f172a', display: 'block' }}>
+                            {inst.name}
+                          </strong>
+                          <small style={{ color: '#64748b' }}>{inst.email}</small>
                         </td>
                         <td>
                           <button
                             type="button"
                             onClick={() => setViewingInstructorId(inst.id)}
                             style={{
-                              background: 'rgba(59,130,246,0.12)',
-                              border: '1px solid rgba(59,130,246,0.25)',
-                              color: '#60a5fa',
+                              background: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              color: '#1d4ed8',
                               padding: '0.3rem 0.7rem',
                               borderRadius: '8px',
                               fontSize: '0.8rem',
+                              fontWeight: 700,
                               cursor: 'pointer',
                               display: 'inline-flex',
                               alignItems: 'center',
-                              gap: '0.35rem',
+                              gap: '0.35rem'
                             }}
                           >
                             <BookOpen size={14} />
@@ -244,8 +339,8 @@ export const InstructorManagement: React.FC = () => {
                               borderRadius: '999px',
                               fontSize: '0.75rem',
                               fontWeight: 700,
-                              background: inst.status === 'active' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                              color: inst.status === 'active' ? '#34d399' : '#f87171',
+                              background: inst.status === 'active' ? '#dcfce7' : '#fee2e2',
+                              color: inst.status === 'active' ? '#15803d' : '#b91c1c'
                             }}
                           >
                             {inst.status}
@@ -263,8 +358,8 @@ export const InstructorManagement: React.FC = () => {
                             <button
                               type="button"
                               onClick={() => {
-                                setEditingUserId(inst.id)
-                                setUserForm(inst)
+                                setEditingUserId(inst.id);
+                                setUserForm(inst);
                               }}
                               style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
                             >
@@ -273,14 +368,24 @@ export const InstructorManagement: React.FC = () => {
                             <button
                               type="button"
                               style={{
-                                backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                                color: '#f87171',
+                                backgroundColor: '#fee2e2',
+                                color: '#b91c1c',
+                                border: '1px solid #fecaca',
                                 padding: '0.3rem 0.6rem',
-                                fontSize: '0.8rem',
+                                fontSize: '0.8rem'
                               }}
-                              onClick={() => {
+                              onClick={async () => {
                                 if (confirm(`Delete instructor account for ${inst.name}?`)) {
-                                  setUsers((current) => current.filter((item) => item.id !== inst.id))
+                                  if (
+                                    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                                      inst.id
+                                    )
+                                  ) {
+                                    await dbProfiles.delete(inst.id).catch(() => null);
+                                  }
+                                  setUsers((current) =>
+                                    current.filter((item) => item.id !== inst.id)
+                                  );
                                 }
                               }}
                             >
@@ -289,7 +394,7 @@ export const InstructorManagement: React.FC = () => {
                           </div>
                         </td>
                       </tr>
-                    )
+                    );
                   })
                 )}
               </tbody>
@@ -298,19 +403,19 @@ export const InstructorManagement: React.FC = () => {
         </div>
       </section>
 
-      {/* View Instructor Modal / Details Drawer */}
+      {/* View Instructor Modal */}
       {viewingInstructor && (
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
+            background: 'rgba(15, 23, 42, 0.6)',
             backdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 100,
-            padding: '1rem',
+            padding: '1rem'
           }}
           onClick={() => setViewingInstructorId(null)}
         >
@@ -322,19 +427,43 @@ export const InstructorManagement: React.FC = () => {
               maxWidth: '600px',
               width: '100%',
               padding: '2rem',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.2rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                marginBottom: '1.2rem'
+              }}
+            >
               <div>
-                <span className="chip" style={{ color: '#1d4ed8', background: '#eff6ff', border: '1px solid #dbeafe', fontWeight: 700 }}>
+                <span
+                  className="chip"
+                  style={{
+                    color: '#1d4ed8',
+                    background: '#eff6ff',
+                    border: '1px solid #dbeafe',
+                    fontWeight: 700
+                  }}
+                >
                   Instructor Information
                 </span>
-                <h3 style={{ margin: '0.5rem 0 0.1rem 0', fontSize: '1.5rem', color: '#0f172a', fontWeight: 800 }}>
+                <h3
+                  style={{
+                    margin: '0.5rem 0 0.1rem 0',
+                    fontSize: '1.5rem',
+                    color: '#0f172a',
+                    fontWeight: 800
+                  }}
+                >
                   {viewingInstructor.name}
                 </h3>
-                <small style={{ color: '#475569', fontSize: '0.88rem' }}>{viewingInstructor.email}</small>
+                <small style={{ color: '#475569', fontSize: '0.88rem' }}>
+                  {viewingInstructor.email}
+                </small>
               </div>
               <button
                 type="button"
@@ -346,31 +475,78 @@ export const InstructorManagement: React.FC = () => {
                   padding: '0.45rem 0.9rem',
                   borderRadius: '8px',
                   cursor: 'pointer',
-                  fontWeight: 600,
+                  fontWeight: 600
                 }}
               >
                 Close
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '1rem', borderRadius: '12px' }}>
-                <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>Status</span>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#16a34a', textTransform: 'capitalize', marginTop: '0.2rem' }}>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '1rem',
+                marginBottom: '1.5rem'
+              }}
+            >
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  padding: '1rem',
+                  borderRadius: '12px'
+                }}
+              >
+                <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Status
+                </span>
+                <div
+                  style={{
+                    fontSize: '1.15rem',
+                    fontWeight: 800,
+                    color: '#16a34a',
+                    textTransform: 'capitalize',
+                    marginTop: '0.2rem'
+                  }}
+                >
                   {viewingInstructor.status}
                 </div>
               </div>
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', padding: '1rem', borderRadius: '12px' }}>
-                <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>Assigned Classes</span>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#2563eb', marginTop: '0.2rem' }}>
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  padding: '1rem',
+                  borderRadius: '12px'
+                }}
+              >
+                <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Assigned Classes
+                </span>
+                <div
+                  style={{
+                    fontSize: '1.15rem',
+                    fontWeight: 800,
+                    color: '#2563eb',
+                    marginTop: '0.2rem'
+                  }}
+                >
                   {instructorAssignedClasses.length} Active Class(es)
                 </div>
               </div>
             </div>
 
             <div>
-              <h4 style={{ margin: '0 0 0.8rem 0', color: '#0f172a', fontSize: '1.05rem', fontWeight: 700 }}>
-                Assigned Classes & Schedules:
+              <h4
+                style={{
+                  margin: '0 0 0.8rem 0',
+                  color: '#0f172a',
+                  fontSize: '1.05rem',
+                  fontWeight: 700
+                }}
+              >
+                Assigned Classes &amp; Schedules:
               </h4>
               {instructorAssignedClasses.length === 0 ? (
                 <p style={{ color: '#64748b', fontSize: '0.9rem', fontStyle: 'italic' }}>
@@ -388,19 +564,35 @@ export const InstructorManagement: React.FC = () => {
                         padding: '0.9rem 1.1rem',
                         display: 'flex',
                         justifyContent: 'space-between',
-                        alignItems: 'center',
+                        alignItems: 'center'
                       }}
                     >
                       <div>
-                        <strong style={{ color: '#0f172a', display: 'block', fontSize: '0.98rem' }}>
+                        <strong
+                          style={{
+                            color: '#0f172a',
+                            display: 'block',
+                            fontSize: '0.98rem'
+                          }}
+                        >
+                          {cls.subject?.code ? `${cls.subject.code} — ` : ''}
                           {cls.subject?.title || 'Subject'}
                         </strong>
                         <small style={{ color: '#475569', fontSize: '0.85rem' }}>
-                          Section: {cls.section?.name || 'CIT A'} • {cls.schedule || 'MWF'} • {cls.room || 'Room'}
+                          Section: {formatCourseSection(cls.section?.name || '')} •{' '}
+                          {cls.schedule || 'TBA'} • {cls.room || 'TBA'}
                         </small>
                       </div>
-                      <span className="chip" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #dbeafe', fontWeight: 600 }}>
-                        {cls.studentIds?.length || 0} students
+                      <span
+                        className="chip"
+                        style={{
+                          background: '#eff6ff',
+                          color: '#1d4ed8',
+                          border: '1px solid #dbeafe',
+                          fontWeight: 600
+                        }}
+                      >
+                        {(cls.studentIds || cls.student_ids || []).length} students
                       </span>
                     </div>
                   ))}
@@ -411,7 +603,7 @@ export const InstructorManagement: React.FC = () => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default InstructorManagement
+export default InstructorManagement;

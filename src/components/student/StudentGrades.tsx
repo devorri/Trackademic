@@ -1,8 +1,8 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../hooks/useAuth'
 import { Printer, Search, ArrowUpDown, ArrowUp, ArrowDown, PlusCircle, MinusCircle } from 'lucide-react'
-import { ensureTermScores, formatCourseSection, getGPAEquivalent } from '../../utils/helpers'
+import { ensureTermScores, formatCourseSection, getGPAEquivalent, isTermEncoded } from '../../utils/helpers'
 import type { StudentAssessmentRow } from '../../utils/types'
 
 type SortField = 'index' | 'code' | 'title' | 'units' | 'prelim' | 'midterm' | 'final' | 'average'
@@ -11,91 +11,111 @@ type SortOrder = 'asc' | 'desc'
 export const StudentGrades: React.FC = () => {
   const { activeUser } = useAuth()
   const {
-    studentTemplateRecords,
     detailedGradingSheets,
     classes,
     subjects,
     instructors,
     printStudentGradingBookReport,
     students,
+    settings,
   } = useData()
 
-  // Match current active student or fallback to Juan Dela Cruz (stud-3)
-  const currentStudent =
-    students.find((s) => s.email === activeUser?.email || s.name === activeUser?.name) ||
-    students.find((s) => s.id === 'stud-3') ||
-    students[0]
+  // Match the logged-in student strictly from database records
+  const currentStudent = useMemo(
+    () =>
+      students.find(
+        (s) =>
+          s.profile_id === activeUser?.id ||
+          s.id === activeUser?.id ||
+          (activeUser?.email && s.email?.toLowerCase() === activeUser.email.toLowerCase()) ||
+          (activeUser?.name && s.name?.toLowerCase() === activeUser.name.toLowerCase()),
+      ) || students[0],
+    [students, activeUser],
+  )
 
-  const baseRecord = studentTemplateRecords[currentStudent?.id || 'stud-3'] || studentTemplateRecords['stud-3']
-
-  // School Year & Term Filter state (matching the portal screenshot)
-  const [schoolYear, setSchoolYear] = useState('2025-2026')
-  const [term, setTerm] = useState('1ST SEMESTER')
-  const [appliedFilter, setAppliedFilter] = useState({ schoolYear: '2025-2026', term: '1ST SEMESTER' })
+  const [schoolYear, setSchoolYear] = useState(settings.schoolYear || '2025-2026')
+  const [term, setTerm] = useState((settings.semester || '1ST SEMESTER').toUpperCase())
+  const [appliedFilter, setAppliedFilter] = useState({
+    schoolYear: settings.schoolYear || '2025-2026',
+    term: (settings.semester || '1ST SEMESTER').toUpperCase(),
+  })
   const [subjectSearch, setSubjectSearch] = useState('')
 
-  // Sort state
   const [sortField, setSortField] = useState<SortField>('index')
   const [sortOrder, setSortOrder] = useState<SortOrder>('asc')
 
-  // Merge live term grades & teacher name from Instructor Gradebook
+  // Build rows ONLY from classes in which the student is actually enrolled
   const liveRows = useMemo(() => {
-    return baseRecord.rows.map((r, idx) => {
-      const matchingClass = classes.find((c) => {
-        const sub = subjects.find((s) => s.id === c.subject_id)
-        return (sub?.code === r.code || c.subject?.code === r.code) && (c.studentIds || []).includes(currentStudent?.id || '')
-      }) || classes.find((c) => {
-        const sub = subjects.find((s) => s.id === c.subject_id)
-        return sub?.code === r.code || c.subject?.code === r.code
-      })
+    if (!currentStudent) return []
+    const enrolledClasses = classes.filter((c) =>
+      (c.studentIds || []).includes(currentStudent.id),
+    )
 
-      const instructorObj = matchingClass
-        ? instructors.find((i) => i.id === matchingClass.instructor_id || i.id === matchingClass.instructor?.id)
-        : instructors[0]
-      const teacherName = (instructorObj?.name || 'MR. REYES').toUpperCase()
+    return enrolledClasses.map((cls, idx) => {
+      const sub = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+      const hasLab = Boolean(sub?.has_laboratory)
+      const instructorObj =
+        instructors.find(
+          (i) =>
+            i.id === cls.instructor_id ||
+            i.profile_id === cls.instructor_id ||
+            i.id === cls.instructor?.id,
+        ) || cls.instructor
+      const teacherName = (instructorObj?.name || 'UNASSIGNED').toUpperCase()
 
-      const liveSheet = matchingClass
-        ? (detailedGradingSheets[matchingClass.id] || []).find((gs) => gs.studentId === currentStudent?.id)
-        : undefined
+      const liveSheet = (detailedGradingSheets[cls.id] || []).find(
+        (gs) => gs.studentId === currentStudent.id,
+      )
 
-      const p = ensureTermScores(liveSheet ? liveSheet.prelim : r.prelim, 82, r.hasLaboratory)
-      const m = ensureTermScores(liveSheet ? liveSheet.midterm : r.midterm, 84, r.hasLaboratory)
-      const f = ensureTermScores(liveSheet ? liveSheet.final : r.final, 86, r.hasLaboratory)
-      const subjectAverage = liveSheet ? liveSheet.average : r.subjectAverage
+      const p = ensureTermScores(liveSheet?.prelim, 0, hasLab)
+      const m = ensureTermScores(liveSheet?.midterm, 0, hasLab)
+      const pf = ensureTermScores(liveSheet?.prefinal, 0, hasLab)
+      const f = ensureTermScores(liveSheet?.final, 0, hasLab)
+      const roundedAverage = liveSheet?.average ? Math.round(liveSheet.average) : 0
 
       return {
-        ...r,
+        subjectId: sub?.id || cls.subject_id,
+        classId: cls.id,
+        code: sub?.code || 'SUBJ',
+        title: sub?.title || 'Subject',
+        units: Number(sub?.units) || 3,
+        hasLaboratory: hasLab,
         rowIndex: idx + 1,
         prelim: p,
         midterm: m,
+        prefinal: pf,
         final: f,
-        subjectAverage,
+        subjectAverage: roundedAverage,
         teacherName,
       }
     })
-  }, [baseRecord.rows, classes, subjects, instructors, detailedGradingSheets, currentStudent?.id])
+  }, [classes, subjects, instructors, detailedGradingSheets, currentStudent])
 
-  // Track which rows are expanded to show Prelim, Midterm, Final, Remarks, Teacher
-  // Default: expand all rows so the student immediately sees their grades like in the screenshot
-  const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {}
-    baseRecord.rows.forEach((r) => {
-      initial[r.code] = true
+  const [expandedCodes, setExpandedCodes] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    setExpandedCodes((prev) => {
+      const next = { ...prev }
+      liveRows.forEach((r) => {
+        if (next[r.classId] === undefined) {
+          next[r.classId] = true
+        }
+      })
+      return next
     })
-    return initial
-  })
+  }, [liveRows])
 
-  function toggleRowExpand(code: string) {
+  function toggleRowExpand(classId: string) {
     setExpandedCodes((prev) => ({
       ...prev,
-      [code]: !prev[code],
+      [classId]: !prev[classId],
     }))
   }
 
   function handleExpandAll(expand: boolean) {
     const next: Record<string, boolean> = {}
     liveRows.forEach((r) => {
-      next[r.code] = expand
+      next[r.classId] = expand
     })
     setExpandedCodes(next)
   }
@@ -152,22 +172,28 @@ export const StudentGrades: React.FC = () => {
 
   const sectionDisplay = currentStudent
     ? formatCourseSection(currentStudent.course, currentStudent.section_label)
-    : baseRecord.section
+    : 'N/A'
 
-  const overallAverage = Number(
-    (liveRows.reduce((sum, r) => sum + r.subjectAverage, 0) / (liveRows.length || 1)).toFixed(1),
-  )
+  const encodedRows = liveRows.filter((r) => r.subjectAverage > 0)
+  // Rounded off whole number as required ("Dapat yong grades is naka round off na")
+  const overallAverage =
+    encodedRows.length > 0
+      ? Math.round(
+          encodedRows.reduce((sum, r) => sum + r.subjectAverage, 0) / encodedRows.length,
+        )
+      : 0
 
   const renderSortIcon = (field: SortField) => {
     if (sortField !== field) return <ArrowUpDown size={14} style={{ opacity: 0.75 }} />
     return sortOrder === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
   }
 
-  const allExpanded = displayedRows.length > 0 && displayedRows.every((r) => expandedCodes[r.code])
+  const allExpanded =
+    displayedRows.length > 0 && displayedRows.every((r) => expandedCodes[r.classId])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: '980px', margin: '0 auto', width: '100%' }}>
-      {/* Top School Year & Term Search Filter Card (Matching Screenshot) */}
+      {/* Top School Year & Term Search Filter Card */}
       <section
         style={{
           background: '#ffffff',
@@ -195,10 +221,10 @@ export const StudentGrades: React.FC = () => {
               Student Online Grade Inquiry
             </span>
             <h3 style={{ margin: '0.45rem 0 0.15rem 0', color: '#0f172a', fontSize: '1.45rem', fontWeight: 800 }}>
-              {currentStudent?.name || baseRecord.studentName} ({sectionDisplay})
+              {currentStudent?.name || activeUser?.name || 'Student'} ({sectionDisplay})
             </h3>
             <p style={{ margin: 0, color: '#64748b', fontSize: '0.88rem' }}>
-              Showing Term Grades for <strong>{appliedFilter.schoolYear}</strong> • <strong>{appliedFilter.term}</strong>
+              Showing Rounded Term Grades for <strong>{appliedFilter.schoolYear}</strong> • <strong>{appliedFilter.term}</strong>
             </p>
           </div>
 
@@ -312,7 +338,6 @@ export const StudentGrades: React.FC = () => {
               <Search size={16} /> Search
             </button>
 
-            {/* Quick Sort & Filter Controls */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
               <input
                 type="text"
@@ -396,20 +421,9 @@ export const StudentGrades: React.FC = () => {
             </div>
           </div>
         </form>
-
-        <p
-          style={{
-            margin: '1.1rem 0 0 0',
-            color: '#64748b',
-            fontStyle: 'italic',
-            fontSize: '0.92rem',
-          }}
-        >
-          Select the school year and term then click Search button to display grades.
-        </p>
       </section>
 
-      {/* Expandable Grades Table (Matching the NVCFI Student Portal Screenshot) */}
+      {/* Expandable Grades Table */}
       <section
         style={{
           background: '#ffffff',
@@ -499,213 +513,260 @@ export const StudentGrades: React.FC = () => {
               {displayedRows.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>
-                    No subjects found matching your search.
+                    {liveRows.length === 0
+                      ? 'You are not enrolled in any subjects yet.'
+                      : 'No subjects found matching your search.'}
                   </td>
                 </tr>
               ) : (
-                displayedRows.map((row: StudentAssessmentRow & { rowIndex: number; teacherName: string }) => {
-                  const isExpanded = !!expandedCodes[row.code]
-                  const prelimGrade = Math.round(row.prelim.computedTermGrade)
-                  const midtermGrade = Math.round(row.midterm.computedTermGrade)
-                  const finalGrade = Math.round(row.final.computedTermGrade)
-                  const isPassed = row.subjectAverage >= 75
+                displayedRows.map(
+                  (
+                    row: StudentAssessmentRow & {
+                      classId: string
+                      rowIndex: number
+                      teacherName: string
+                    },
+                  ) => {
+                    const isExpanded = !!expandedCodes[row.classId]
+                    const prelimEncoded = isTermEncoded(row.prelim)
+                    const midtermEncoded = isTermEncoded(row.midterm)
+                    const prefinalEncoded = isTermEncoded(row.prefinal)
+                    const finalEncoded = isTermEncoded(row.final)
 
-                  return (
-                    <React.Fragment key={row.code}>
-                      {/* Main Subject Row (Code | Subject | Units) */}
-                      <tr
-                        onClick={() => toggleRowExpand(row.code)}
-                        style={{
-                          background: '#f8fafc',
-                          borderBottom: '1px solid #cbd5e1',
-                          cursor: 'pointer',
-                          transition: 'background 0.15s ease',
-                        }}
-                      >
-                        <td
+                    // Rounded whole numbers as required
+                    const prelimGrade = prelimEncoded ? Math.round(row.prelim.computedTermGrade) : null
+                    const midtermGrade = midtermEncoded ? Math.round(row.midterm.computedTermGrade) : null
+                    const prefinalGrade = prefinalEncoded
+                      ? Math.round(row.prefinal!.computedTermGrade)
+                      : null
+                    const finalGrade = finalEncoded ? Math.round(row.final.computedTermGrade) : null
+                    const roundedAvg = row.subjectAverage > 0 ? Math.round(row.subjectAverage) : null
+                    const isPassed = roundedAvg !== null && roundedAvg >= 75
+
+                    return (
+                      <React.Fragment key={row.classId}>
+                        <tr
+                          onClick={() => toggleRowExpand(row.classId)}
                           style={{
-                            padding: '1rem 0.75rem',
-                            textAlign: 'center',
-                            borderRight: '1px solid #cbd5e1',
-                            verticalAlign: 'middle',
+                            background: '#f8fafc',
+                            borderBottom: '1px solid #cbd5e1',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s ease',
                           }}
                         >
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
-                            {isExpanded ? (
-                              <MinusCircle
-                                size={20}
-                                fill="#ef4444"
-                                color="#ffffff"
-                                style={{
-                                  flexShrink: 0,
-                                  filter: 'drop-shadow(0 1px 2px rgba(239, 68, 68, 0.35))',
-                                }}
-                              />
-                            ) : (
-                              <PlusCircle
-                                size={20}
-                                fill="#2596e6"
-                                color="#ffffff"
-                                style={{
-                                  flexShrink: 0,
-                                  filter: 'drop-shadow(0 1px 2px rgba(37, 150, 230, 0.35))',
-                                }}
-                              />
-                            )}
-                            <span style={{ color: '#475569', fontWeight: 600, fontSize: '0.95rem' }}>
-                              {row.rowIndex}
-                            </span>
-                          </div>
-                        </td>
-
-                        <td
-                          style={{
-                            padding: '1rem 0.9rem',
-                            color: '#475569',
-                            fontWeight: 600,
-                            fontSize: '0.95rem',
-                            borderRight: '1px solid #cbd5e1',
-                            verticalAlign: 'middle',
-                          }}
-                        >
-                          {row.code}
-                        </td>
-
-                        <td
-                          style={{
-                            padding: '1rem',
-                            color: '#475569',
-                            fontWeight: 600,
-                            fontSize: '0.95rem',
-                            textTransform: 'uppercase',
-                            borderRight: '1px solid #cbd5e1',
-                            verticalAlign: 'middle',
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {row.title}
-                        </td>
-
-                        <td
-                          style={{
-                            padding: '1rem 0.9rem',
-                            textAlign: 'center',
-                            color: '#475569',
-                            fontWeight: 600,
-                            fontSize: '0.95rem',
-                            verticalAlign: 'middle',
-                          }}
-                        >
-                          {row.units}
-                        </td>
-                      </tr>
-
-                      {/* Expanded Grade Details Drawer (Prelim, Midterm, Final, Remarks, Teacher) */}
-                      {isExpanded && (
-                        <tr style={{ background: '#ffffff', borderBottom: '1.5px solid #cbd5e1' }}>
-                          <td colSpan={4} style={{ padding: '0.8rem 1.4rem 1.1rem 1.4rem' }}>
-                            <div style={{ maxWidth: '460px', display: 'flex', flexDirection: 'column' }}>
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '140px 1fr',
-                                  padding: '0.55rem 0',
-                                  borderBottom: '1px solid #f1f5f9',
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Prelim</strong>
-                                <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 600 }}>
-                                  {prelimGrade}
-                                </span>
-                              </div>
-
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '140px 1fr',
-                                  padding: '0.55rem 0',
-                                  borderBottom: '1px solid #f1f5f9',
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Midterm</strong>
-                                <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 600 }}>
-                                  {midtermGrade}
-                                </span>
-                              </div>
-
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '140px 1fr',
-                                  padding: '0.55rem 0',
-                                  borderBottom: '1px solid #f1f5f9',
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Final</strong>
-                                <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 600 }}>
-                                  {finalGrade}
-                                </span>
-                              </div>
-
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '140px 1fr',
-                                  padding: '0.55rem 0',
-                                  borderBottom: '1px solid #f1f5f9',
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Average</strong>
-                                <span style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 800 }}>
-                                  {row.subjectAverage.toFixed(1)} (GPA: {getGPAEquivalent(row.subjectAverage)})
-                                </span>
-                              </div>
-
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '140px 1fr',
-                                  padding: '0.55rem 0',
-                                  borderBottom: '1px solid #f1f5f9',
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Remarks</strong>
-                                <span
+                          <td
+                            style={{
+                              padding: '1rem 0.75rem',
+                              textAlign: 'center',
+                              borderRight: '1px solid #cbd5e1',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
+                              {isExpanded ? (
+                                <MinusCircle
+                                  size={20}
+                                  fill="#ef4444"
+                                  color="#ffffff"
                                   style={{
-                                    color: isPassed ? '#15803d' : '#dc2626',
-                                    fontSize: '0.92rem',
-                                    fontWeight: 800,
+                                    flexShrink: 0,
+                                    filter: 'drop-shadow(0 1px 2px rgba(239, 68, 68, 0.35))',
                                   }}
-                                >
-                                  {isPassed ? 'PASSED' : 'AT RISK'}
-                                </span>
-                              </div>
-
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: '140px 1fr',
-                                  padding: '0.55rem 0',
-                                  alignItems: 'center',
-                                }}
-                              >
-                                <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Teacher</strong>
-                                <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 600, textTransform: 'uppercase' }}>
-                                  {row.teacherName}
-                                </span>
-                              </div>
+                                />
+                              ) : (
+                                <PlusCircle
+                                  size={20}
+                                  fill="#2596e6"
+                                  color="#ffffff"
+                                  style={{
+                                    flexShrink: 0,
+                                    filter: 'drop-shadow(0 1px 2px rgba(37, 150, 230, 0.35))',
+                                  }}
+                                />
+                              )}
+                              <span style={{ color: '#475569', fontWeight: 600, fontSize: '0.95rem' }}>
+                                {row.rowIndex}
+                              </span>
                             </div>
                           </td>
+
+                          <td
+                            style={{
+                              padding: '1rem 0.9rem',
+                              color: '#475569',
+                              fontWeight: 600,
+                              fontSize: '0.95rem',
+                              borderRight: '1px solid #cbd5e1',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            {row.code}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '1rem',
+                              color: '#475569',
+                              fontWeight: 600,
+                              fontSize: '0.95rem',
+                              textTransform: 'uppercase',
+                              borderRight: '1px solid #cbd5e1',
+                              verticalAlign: 'middle',
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {row.title}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '1rem 0.9rem',
+                              textAlign: 'center',
+                              color: '#475569',
+                              fontWeight: 600,
+                              fontSize: '0.95rem',
+                              verticalAlign: 'middle',
+                            }}
+                          >
+                            {row.units}
+                          </td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  )
-                })
+
+                        {/* Expanded Grade Details Drawer (All Rounded Whole Numbers) */}
+                        {isExpanded && (
+                          <tr style={{ background: '#ffffff', borderBottom: '1.5px solid #cbd5e1' }}>
+                            <td colSpan={4} style={{ padding: '0.8rem 1.4rem 1.1rem 1.4rem' }}>
+                              <div style={{ maxWidth: '480px', display: 'flex', flexDirection: 'column' }}>
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '140px 1fr',
+                                    padding: '0.55rem 0',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Prelim</strong>
+                                  <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 700 }}>
+                                    {prelimGrade !== null ? prelimGrade : '—'}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '140px 1fr',
+                                    padding: '0.55rem 0',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Midterm</strong>
+                                  <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 700 }}>
+                                    {midtermGrade !== null ? midtermGrade : '—'}
+                                  </span>
+                                </div>
+
+                                {prefinalGrade !== null && (
+                                  <div
+                                    style={{
+                                      display: 'grid',
+                                      gridTemplateColumns: '140px 1fr',
+                                      padding: '0.55rem 0',
+                                      borderBottom: '1px solid #f1f5f9',
+                                      alignItems: 'center',
+                                    }}
+                                  >
+                                    <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Pre-Final</strong>
+                                    <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 700 }}>
+                                      {prefinalGrade}
+                                    </span>
+                                  </div>
+                                )}
+
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '140px 1fr',
+                                    padding: '0.55rem 0',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Final</strong>
+                                  <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 700 }}>
+                                    {finalGrade !== null ? finalGrade : '—'}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '140px 1fr',
+                                    padding: '0.55rem 0',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Average</strong>
+                                  <span style={{ color: '#0f172a', fontSize: '0.95rem', fontWeight: 800 }}>
+                                    {roundedAvg !== null
+                                      ? `${roundedAvg} (GPA: ${getGPAEquivalent(roundedAvg)})`
+                                      : '—'}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '140px 1fr',
+                                    padding: '0.55rem 0',
+                                    borderBottom: '1px solid #f1f5f9',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Remarks</strong>
+                                  <span
+                                    style={{
+                                      color:
+                                        roundedAvg === null
+                                          ? '#64748b'
+                                          : isPassed
+                                          ? '#15803d'
+                                          : '#dc2626',
+                                      fontSize: '0.92rem',
+                                      fontWeight: 800,
+                                    }}
+                                  >
+                                    {roundedAvg === null
+                                      ? 'PENDING'
+                                      : isPassed
+                                      ? 'PASSED'
+                                      : 'AT RISK'}
+                                  </span>
+                                </div>
+
+                                <div
+                                  style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: '140px 1fr',
+                                    padding: '0.55rem 0',
+                                    alignItems: 'center',
+                                  }}
+                                >
+                                  <strong style={{ color: '#334155', fontSize: '0.95rem' }}>Teacher</strong>
+                                  <span style={{ color: '#475569', fontSize: '0.95rem', fontWeight: 600, textTransform: 'uppercase' }}>
+                                    {row.teacherName}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    )
+                  },
+                )
               )}
             </tbody>
             <tfoot style={{ background: '#f8fafc', borderTop: '2px solid #cbd5e1' }}>
@@ -714,7 +775,9 @@ export const StudentGrades: React.FC = () => {
                   GENERAL WEIGHTED AVERAGE (GWA):
                 </td>
                 <td style={{ padding: '0.9rem 1rem', textAlign: 'center', fontWeight: 900, color: '#0284c7', fontSize: '1.05rem' }}>
-                  {overallAverage}% ({getGPAEquivalent(overallAverage)})
+                  {overallAverage > 0
+                    ? `${overallAverage}% (${getGPAEquivalent(overallAverage)})`
+                    : '—'}
                 </td>
               </tr>
             </tfoot>
@@ -724,3 +787,4 @@ export const StudentGrades: React.FC = () => {
     </div>
   )
 }
+export default StudentGrades

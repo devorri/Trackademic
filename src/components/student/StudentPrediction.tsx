@@ -1,47 +1,79 @@
-import React from 'react'
+import React, { useMemo } from 'react'
+import { useAuth } from '../../hooks/useAuth'
+import { useData } from '../../context/DataContext'
 import { AlertTriangle, TrendingUp } from 'lucide-react'
 
 export const StudentPrediction: React.FC = () => {
-  // As specified by user:
-  // Current Performance: 82%
-  // Predicted Performance: 85%
-  // Status: ON TRACK
-  const currentPerformance = 82
-  const predictedPerformance = 85
-  const status: string = 'ON TRACK'
-  const isAtRisk = status === 'AT RISK' || currentPerformance < 75
+  const { activeUser } = useAuth()
+  const { students, classes, subjects, detailedGradingSheets } = useData()
 
-  // Benchmark table requested by user:
-  // Student A: 72% | 74% | At Risk
-  // Student B: 84% | 86% | On Track
-  // Student C: 91% | 93% | High
-  const cohortBenchmarks = [
-    {
-      studentName: 'Student A',
-      currentPerformance: '72%',
-      prediction: '74%',
-      status: 'At Risk',
-      note: 'Below passing threshold',
-    },
-    {
-      studentName: 'Student B',
-      currentPerformance: '84%',
-      prediction: '86%',
-      status: 'On Track',
-      note: 'Passing comfortably',
-    },
-    {
-      studentName: 'Student C',
-      currentPerformance: '91%',
-      prediction: '93%',
-      status: 'High',
-      note: 'Academic honors pace',
-    },
-  ]
+  const currentStudent = useMemo(
+    () =>
+      students.find(
+        (s) =>
+          s.profile_id === activeUser?.id ||
+          s.id === activeUser?.id ||
+          (activeUser?.email && s.email?.toLowerCase() === activeUser.email.toLowerCase()) ||
+          (activeUser?.name && s.name?.toLowerCase() === activeUser.name.toLowerCase()),
+      ),
+    [students, activeUser],
+  )
+
+  const subjectForecasts = useMemo(() => {
+    if (!currentStudent) return []
+    const enrolled = classes.filter((c) => (c.studentIds || []).includes(currentStudent.id))
+    return enrolled.map((cls) => {
+      const subj = subjects.find((s) => s.id === cls.subject_id) || cls.subject
+      const sheetRow = (detailedGradingSheets[cls.id] || []).find(
+        (r) => r.studentId === currentStudent.id,
+      )
+      const currentAvg = sheetRow?.average ? Math.round(sheetRow.average) : 0
+      const predictedAvg = currentAvg > 0 ? Math.min(100, currentAvg + 2) : 0
+      let status = 'Pending'
+      let note = 'Awaiting grade encoding'
+      if (currentAvg > 0) {
+        if (currentAvg >= 90) {
+          status = 'High'
+          note = 'Academic honors pace'
+        } else if (currentAvg >= 75) {
+          status = 'On Track'
+          note = 'Passing comfortably'
+        } else {
+          status = 'At Risk'
+          note = 'Below passing threshold (75%)'
+        }
+      }
+      return {
+        classId: cls.id,
+        subjectName: `${subj?.code || 'SUBJ'} - ${subj?.title || 'Subject'}`,
+        currentAvg,
+        predictedAvg,
+        status,
+        note,
+      }
+    })
+  }, [currentStudent, classes, subjects, detailedGradingSheets])
+
+  const encodedForecasts = subjectForecasts.filter((f) => f.currentAvg > 0)
+  const currentPerformance =
+    encodedForecasts.length > 0
+      ? Math.round(
+          encodedForecasts.reduce((acc, f) => acc + f.currentAvg, 0) / encodedForecasts.length,
+        )
+      : 0
+  const predictedPerformance =
+    currentPerformance > 0 ? Math.min(100, currentPerformance + 2) : 0
+
+  const status =
+    currentPerformance === 0
+      ? 'PENDING'
+      : currentPerformance >= 75
+      ? 'ON TRACK'
+      : 'AT RISK'
+  const isAtRisk = status === 'AT RISK'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem' }}>
-      {/* Performance Prediction Card */}
       <section
         style={{
           padding: '2rem',
@@ -80,10 +112,9 @@ export const StudentPrediction: React.FC = () => {
           <TrendingUp size={24} color="#2563eb" /> Academic Outcome Forecast
         </h3>
         <p style={{ margin: 0, color: '#475569', fontSize: '0.92rem' }}>
-          Predictive model estimates your end-of-semester result based on your Preliminary, Midterm, and Final term grades.
+          Predictive model estimates your end-of-semester result based on your encoded Preliminary, Midterm, Pre-Final, and Final term grades.
         </p>
 
-        {/* 3 Metric Cards */}
         <div
           style={{
             display: 'grid',
@@ -97,7 +128,7 @@ export const StudentPrediction: React.FC = () => {
               Current Performance
             </span>
             <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0f172a', marginTop: '0.3rem' }}>
-              {currentPerformance}%
+              {currentPerformance > 0 ? `${currentPerformance}%` : '—'}
             </div>
             <small style={{ color: '#64748b', fontWeight: 500 }}>Recorded grades average</small>
           </div>
@@ -107,23 +138,31 @@ export const StudentPrediction: React.FC = () => {
               Predicted Performance
             </span>
             <div style={{ fontSize: '2.5rem', fontWeight: 800, color: '#1d4ed8', marginTop: '0.3rem' }}>
-              {predictedPerformance}%
+              {predictedPerformance > 0 ? `${predictedPerformance}%` : '—'}
             </div>
-            <small style={{ color: '#2563eb', fontWeight: 600 }}>Estimated final outcome (+3% pace)</small>
+            <small style={{ color: '#2563eb', fontWeight: 600 }}>Estimated final outcome</small>
           </div>
 
           <div style={{ background: '#f0fdf4', padding: '1.4rem', borderRadius: '14px', border: '1px solid #bbf7d0' }}>
             <span style={{ fontSize: '0.8rem', color: '#15803d', textTransform: 'uppercase', fontWeight: 700 }}>
               Status
             </span>
-            <div style={{ fontSize: '2.3rem', fontWeight: 800, color: '#15803d', marginTop: '0.3rem' }}>
+            <div
+              style={{
+                fontSize: '2.3rem',
+                fontWeight: 800,
+                color: isAtRisk ? '#dc2626' : '#15803d',
+                marginTop: '0.3rem',
+              }}
+            >
               {status}
             </div>
-            <small style={{ color: '#16a34a', fontWeight: 600 }}>On target for course clearance</small>
+            <small style={{ color: '#16a34a', fontWeight: 600 }}>
+              {currentPerformance > 0 ? 'Based on encoded grades' : 'Awaiting grade encoding'}
+            </small>
           </div>
         </div>
 
-        {/* Warning if at risk */}
         {isAtRisk && (
           <div
             style={{
@@ -148,7 +187,6 @@ export const StudentPrediction: React.FC = () => {
         )}
       </section>
 
-      {/* Cohort Benchmarks Table requested by user */}
       <section
         style={{
           padding: '1.6rem 2rem',
@@ -158,22 +196,20 @@ export const StudentPrediction: React.FC = () => {
           boxShadow: '0 4px 16px -2px rgba(15, 23, 42, 0.05)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h4 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>
-              Cohort Academic Predictive Benchmarks
-            </h4>
-            <p style={{ margin: '0.2rem 0 0 0', color: '#475569', fontSize: '0.9rem' }}>
-              Reference guidelines and performance tiers
-            </p>
-          </div>
+        <div>
+          <h4 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a', fontWeight: 800 }}>
+            Subject-by-Subject Predictive Forecast
+          </h4>
+          <p style={{ margin: '0.2rem 0 0 0', color: '#475569', fontSize: '0.9rem' }}>
+            Real-time projections for your enrolled subjects
+          </p>
         </div>
 
         <div style={{ overflowX: 'auto', marginTop: '1.2rem', border: '1px solid #e2e8f0', borderRadius: '12px' }}>
           <table style={{ margin: 0, width: '100%' }}>
             <thead>
               <tr style={{ background: '#f8fafc' }}>
-                <th style={{ color: '#0f172a', fontWeight: 700 }}>Student</th>
+                <th style={{ color: '#0f172a', fontWeight: 700 }}>Subject</th>
                 <th style={{ color: '#0f172a', fontWeight: 700 }}>Current Performance</th>
                 <th style={{ color: '#0f172a', fontWeight: 700 }}>Prediction</th>
                 <th style={{ color: '#0f172a', fontWeight: 700 }}>Status</th>
@@ -181,48 +217,56 @@ export const StudentPrediction: React.FC = () => {
               </tr>
             </thead>
             <tbody>
-              {cohortBenchmarks.map((item, idx) => {
-                const isRisk = item.status === 'At Risk'
-                const isHigh = item.status === 'High'
+              {subjectForecasts.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                    You are not enrolled in any subjects yet.
+                  </td>
+                </tr>
+              ) : (
+                subjectForecasts.map((item) => {
+                  const isRisk = item.status === 'At Risk'
+                  const isHigh = item.status === 'High'
 
-                return (
-                  <tr key={idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                    <td style={{ padding: '0.85rem 1rem' }}>
-                      <strong style={{ color: '#0f172a' }}>{item.studentName}</strong>
-                    </td>
-                    <td>
-                      <strong style={{ color: isRisk ? '#dc2626' : '#0f172a', fontWeight: 800, fontSize: '1.05rem' }}>
-                        {item.currentPerformance}
-                      </strong>
-                    </td>
-                    <td>
-                      <strong style={{ color: isRisk ? '#d97706' : '#1d4ed8', fontWeight: 800, fontSize: '1.05rem' }}>
-                        {item.prediction}
-                      </strong>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          padding: '0.25rem 0.65rem',
-                          borderRadius: '999px',
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          background: isRisk ? '#fee2e2' : isHigh ? '#faf5ff' : '#f0fdf4',
-                          color: isRisk ? '#b91c1c' : isHigh ? '#7e22ce' : '#15803d',
-                          border: isRisk ? '1px solid #fecaca' : isHigh ? '1px solid #e9d5ff' : '1px solid #bbf7d0',
-                        }}
-                      >
-                        {item.status}
-                      </span>
-                    </td>
-                    <td>
-                      <small style={{ color: isRisk ? '#b91c1c' : '#64748b', fontWeight: isRisk ? 600 : 500 }}>
-                        {item.note}
-                      </small>
-                    </td>
-                  </tr>
-                )
-              })}
+                  return (
+                    <tr key={item.classId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '0.85rem 1rem' }}>
+                        <strong style={{ color: '#0f172a' }}>{item.subjectName}</strong>
+                      </td>
+                      <td>
+                        <strong style={{ color: isRisk ? '#dc2626' : '#0f172a', fontWeight: 800, fontSize: '1.05rem' }}>
+                          {item.currentAvg > 0 ? `${item.currentAvg}%` : '—'}
+                        </strong>
+                      </td>
+                      <td>
+                        <strong style={{ color: isRisk ? '#d97706' : '#1d4ed8', fontWeight: 800, fontSize: '1.05rem' }}>
+                          {item.predictedAvg > 0 ? `${item.predictedAvg}%` : '—'}
+                        </strong>
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: '999px',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            background: isRisk ? '#fee2e2' : isHigh ? '#faf5ff' : '#f0fdf4',
+                            color: isRisk ? '#b91c1c' : isHigh ? '#7e22ce' : '#15803d',
+                            border: isRisk ? '1px solid #fecaca' : isHigh ? '1px solid #e9d5ff' : '1px solid #bbf7d0',
+                          }}
+                        >
+                          {item.status}
+                        </span>
+                      </td>
+                      <td>
+                        <small style={{ color: isRisk ? '#b91c1c' : '#64748b', fontWeight: isRisk ? 600 : 500 }}>
+                          {item.note}
+                        </small>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
             </tbody>
           </table>
         </div>

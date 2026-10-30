@@ -1,384 +1,485 @@
-import React, { useState } from 'react'
-import { useData } from '../../context/DataContext'
-import { useAuth } from '../../hooks/useAuth'
-import { Settings, Save, Calendar, Check, Sliders, Shield, Bell } from 'lucide-react'
+import React, { useState } from 'react';
+import {
+  Save,
+  Calendar,
+  Award,
+  Bell,
+  CheckCircle2,
+  Shield,
+  Database,
+  Calculator
+} from 'lucide-react';
+import { dbSystemSettings } from '../../utils/db';
 
 export const AdminSettings: React.FC = () => {
-  const { settings, updateSettings } = useData()
-  const { activeUser, setActiveUser } = useAuth()
+  const [academicSettings, setAcademicSettings] = useState({
+    schoolYear: '2025-2026',
+    semester: '1st Semester',
+    enrollmentStatus: 'Open',
+    gradeSubmissionDeadline: '2026-05-30'
+  });
 
-  // Local form states
-  const [schoolYear, setSchoolYear] = useState(settings.schoolYear)
-  const [semester, setSemester] = useState(settings.semester)
-  const [passingGrade, setPassingGrade] = useState(settings.passingGrade)
-  const [prelimWeight, setPrelimWeight] = useState(settings.prelimWeight)
-  const [midtermWeight, setMidtermWeight] = useState(settings.midtermWeight)
-  const [finalWeight, setFinalWeight] = useState(settings.finalWeight)
-  const [quizWeight, setQuizWeight] = useState(settings.quizWeight)
-  const assignmentWeight = settings.assignmentWeight || 0
-  const [activityWeight, setActivityWeight] = useState(settings.activityWeight)
-  const [attendanceWeight, setAttendanceWeight] = useState(settings.attendanceWeight || 10)
-  const [participationWeight, setParticipationWeight] = useState(settings.participationWeight || 10)
-  const [examWeight, setExamWeight] = useState(settings.examWeight)
-  const [labExamWeight, setLabExamWeight] = useState(settings.labExamWeight || 25)
-  const [automatedRiskAlerts, setAutomatedRiskAlerts] = useState(settings.automatedRiskAlerts)
+  // Matches the exact Trackademic grading specification:
+  // Per-Period Raw = Attendance 10% + Quizzes 20% + Activity 20% + Participation 10% + Exam 40% = 100%
+  // Cumulative Term Grade = Previous Period Grade (40%) + Current Period Raw Grade (60%)
+  const [gradingSettings, setGradingSettings] = useState({
+    passingGrade: 75,
+    attendanceWeight: 10,
+    quizWeight: 20,
+    activityWeight: 20,
+    participationWeight: 10,
+    examWeight: 40,
+    previousPeriodWeight: 40,
+    currentPeriodRawWeight: 60,
+    roundingMode: 'Whole Number (Math.round)'
+  });
 
-  // Account settings
-  const [adminName, setAdminName] = useState(activeUser?.name || 'Administrator')
-  const [adminEmail, setAdminEmail] = useState(activeUser?.email || 'admin@example.com')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const [notificationSettings, setNotificationSettings] = useState({
+    notifyAdminOnGradeSubmit: true,
+    notifyInstructorOnClassAssign: true,
+    notifyInstructorOnStudentEnroll: true,
+    notifyInstructorOnStudentDropOut: true
+  });
 
-  const [savedNotice, setSavedNotice] = useState(false)
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  function handleSaveAll(e: React.FormEvent) {
-    e.preventDefault()
+  const componentTotal =
+    gradingSettings.attendanceWeight +
+    gradingSettings.quizWeight +
+    gradingSettings.activityWeight +
+    gradingSettings.participationWeight +
+    gradingSettings.examWeight;
 
-    if (newPassword && newPassword !== confirmPassword) {
-      alert('Passwords do not match!')
-      return
+  const cumulativeTotal =
+    gradingSettings.previousPeriodWeight + gradingSettings.currentPeriodRawWeight;
+
+  const handleSaveSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (componentTotal !== 100) {
+      alert(`Per-period component weights must equal 100% (currently ${componentTotal}%).`);
+      return;
+    }
+    if (cumulativeTotal !== 100) {
+      alert(`Cumulative period weights must equal 100% (currently ${cumulativeTotal}%).`);
+      return;
     }
 
-    updateSettings({
-      schoolYear,
-      semester,
-      passingGrade: Number(passingGrade),
-      prelimWeight: Number(prelimWeight),
-      midtermWeight: Number(midtermWeight),
-      finalWeight: Number(finalWeight),
-      quizWeight: Number(quizWeight),
-      assignmentWeight: Number(assignmentWeight),
-      activityWeight: Number(activityWeight),
-      attendanceWeight: Number(attendanceWeight),
-      participationWeight: Number(participationWeight),
-      examWeight: Number(examWeight),
-      labExamWeight: Number(labExamWeight),
-      automatedRiskAlerts,
-    })
+    await dbSystemSettings.save({
+      school_year: academicSettings.schoolYear,
+      semester: academicSettings.semester,
+      passing_grade: gradingSettings.passingGrade,
+      exam_weight: gradingSettings.examWeight,
+      quiz_weight: gradingSettings.quizWeight,
+      activity_weight: gradingSettings.activityWeight + gradingSettings.attendanceWeight + gradingSettings.participationWeight,
+      email_alerts: notificationSettings.notifyAdminOnGradeSubmit
+    });
 
-    if (activeUser) {
-      setActiveUser({
-        ...activeUser,
-        name: adminName,
-        email: adminEmail,
-      })
-    }
-
-    setSavedNotice(true)
-    setTimeout(() => setSavedNotice(false), 3000)
-  }
+    setSaveMessage('System and grading formula settings saved to Supabase!');
+    setTimeout(() => setSaveMessage(null), 3500);
+  };
 
   return (
-    <form onSubmit={handleSaveAll} style={{ display: 'flex', flexDirection: 'column', gap: '1.8rem' }}>
-      {/* Header */}
-      <div
-        style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 4px 16px -2px rgba(15, 23, 42, 0.05)',
-          borderRadius: '16px',
-          padding: '1.5rem 1.8rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '1rem',
-        }}
-      >
+    <section className="content-section">
+      <div className="section-header">
         <div>
-          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#0f172a' }}>
-            <Settings size={22} color="#2563eb" /> System & Academic Settings
-          </h3>
-          <span className="chip" style={{ marginTop: '0.3rem' }}>
-            Configure active academic periods, computation formulas, and system preferences
-          </span>
+          <h1>System Settings</h1>
+          <p className="section-subtitle">
+            Configure academic periods, the cumulative 4-period grading formula, and real-time notification triggers.
+          </p>
         </div>
 
         <button
-          type="submit"
-          className="btn-primary"
-          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.65rem 1.4rem', fontWeight: 700 }}
+          onClick={handleSaveSettings}
+          className="primary-btn"
+          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
         >
-          <Save size={16} /> Save Configuration
+          <Save size={16} />
+          <span>Save All Changes</span>
         </button>
       </div>
 
-      {savedNotice && (
+      {saveMessage && (
         <div
           style={{
-            background: '#f0fdf4',
-            border: '1.5px solid #86efac',
-            borderRadius: '12px',
-            padding: '1rem 1.4rem',
+            background: '#dcfce7',
+            border: '1px solid #86efac',
             color: '#15803d',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            marginBottom: '20px',
             display: 'flex',
             alignItems: 'center',
-            gap: '0.6rem',
-            fontWeight: 600,
+            gap: '8px',
+            fontWeight: 600
           }}
         >
-          <Check size={18} /> Settings have been successfully saved and applied system-wide!
+          <CheckCircle2 size={18} />
+          <span>{saveMessage}</span>
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
-        {/* 1. Academic Calendar (School Year & Semester) */}
-        <section className="panel" style={{ padding: '1.6rem', background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.03)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a', fontSize: '1.1rem' }}>
-            <Calendar size={18} color="#2563eb" /> Academic Period Settings
-          </h4>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
+        {/* Academic Period Configuration */}
+        <article className="panel">
+          <div className="panel-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Calendar size={20} style={{ color: '#2563eb' }} />
+              <div>
+                <h2>Academic Period</h2>
+                <p>Set the active school year and semester</p>
+              </div>
+            </div>
+          </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', color: '#334155', fontWeight: 600, marginBottom: '0.3rem' }}>
-                Active School Year *
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+            <div className="form-group">
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
+                Active School Year
               </label>
               <select
-                value={schoolYear}
-                onChange={(e) => setSchoolYear(e.target.value)}
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
+                value={academicSettings.schoolYear}
+                onChange={(e) => setAcademicSettings({ ...academicSettings, schoolYear: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  background: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  color: '#0f172a'
+                }}
               >
+                <option value="2024-2025">2024-2025</option>
                 <option value="2025-2026">2025-2026</option>
                 <option value="2026-2027">2026-2027</option>
-                <option value="2024-2025">2024-2025</option>
               </select>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', color: '#334155', fontWeight: 600, marginBottom: '0.3rem' }}>
-                Active Semester *
+            <div className="form-group">
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
+                Active Semester
               </label>
               <select
-                value={semester}
-                onChange={(e) => setSemester(e.target.value)}
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
+                value={academicSettings.semester}
+                onChange={(e) => setAcademicSettings({ ...academicSettings, semester: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  background: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  color: '#0f172a'
+                }}
               >
                 <option value="1st Semester">1st Semester</option>
                 <option value="2nd Semester">2nd Semester</option>
-                <option value="Summer Term">Summer Term</option>
+                <option value="Summer">Summer Term</option>
               </select>
             </div>
 
-            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '0.9rem', borderRadius: '10px', fontSize: '0.85rem', color: '#1e40af' }}>
-              💡 All new classes and generated reports will default to <strong>{schoolYear} ({semester})</strong>.
-            </div>
-          </div>
-        </section>
-
-        {/* 2. Grading Settings */}
-        <section className="panel" style={{ padding: '1.6rem', background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.03)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a', fontSize: '1.1rem' }}>
-            <Sliders size={18} color="#16a34a" /> Grading Settings & Formula
-          </h4>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', color: '#334155', fontWeight: 600, marginBottom: '0.3rem' }}>
-                Passing Grade Threshold (%)
+            <div className="form-group">
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.85rem', color: '#334155', fontWeight: 600 }}>
+                Grade Submission Deadline
               </label>
               <input
-                type="number"
-                min="60"
-                max="85"
-                value={passingGrade}
-                onChange={(e) => setPassingGrade(Number(e.target.value))}
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
+                type="date"
+                value={academicSettings.gradeSubmissionDeadline}
+                onChange={(e) =>
+                  setAcademicSettings({ ...academicSettings, gradeSubmissionDeadline: e.target.value })
+                }
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  background: '#ffffff',
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '8px',
+                  color: '#0f172a',
+                  boxSizing: 'border-box'
+                }}
               />
             </div>
+          </div>
+        </article>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.6rem' }}>
+        {/* Per-Period Component Weights */}
+        <article className="panel">
+          <div className="panel-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Award size={20} style={{ color: '#16a34a' }} />
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Prelim %</label>
-                <input
-                  type="number"
-                  value={prelimWeight}
-                  onChange={(e) => setPrelimWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Midterm %</label>
-                <input
-                  type="number"
-                  value={midtermWeight}
-                  onChange={(e) => setMidtermWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Final %</label>
-                <input
-                  type="number"
-                  value={finalWeight}
-                  onChange={(e) => setFinalWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Quiz %</label>
-                <input
-                  type="number"
-                  value={quizWeight}
-                  onChange={(e) => setQuizWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Activity %</label>
-                <input
-                  type="number"
-                  value={activityWeight}
-                  onChange={(e) => setActivityWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Exam %</label>
-                <input
-                  type="number"
-                  value={examWeight}
-                  onChange={(e) => setExamWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Attendance %</label>
-                <input
-                  type="number"
-                  value={attendanceWeight}
-                  onChange={(e) => setAttendanceWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#334155', fontWeight: 600, marginBottom: '0.2rem' }}>Participation %</label>
-                <input
-                  type="number"
-                  value={participationWeight}
-                  onChange={(e) => setParticipationWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.75rem', color: '#6b21a8', fontWeight: 700, marginBottom: '0.2rem' }}>Lab Exam % (Lab Subj)</label>
-                <input
-                  type="number"
-                  value={labExamWeight}
-                  onChange={(e) => setLabExamWeight(Number(e.target.value))}
-                  style={{ width: '100%', padding: '0.45rem', borderRadius: '8px', background: '#faf5ff', color: '#6b21a8', border: '1.5px solid #d8b4fe', fontWeight: 700 }}
-                />
+                <h2>Per-Period Component Weights (100%)</h2>
+                <p>Applied to Prelim, Midterm, Pre-Final, and Final raw scores</p>
               </div>
             </div>
           </div>
-        </section>
 
-        {/* 3. Account Settings */}
-        <section className="panel" style={{ padding: '1.6rem', background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.03)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a', fontSize: '1.1rem' }}>
-            <Shield size={18} color="#7c3aed" /> Account Settings
-          </h4>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', color: '#334155', fontWeight: 600, marginBottom: '0.3rem' }}>Admin Name</label>
-              <input
-                type="text"
-                value={adminName}
-                onChange={(e) => setAdminName(e.target.value)}
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.82rem', color: '#334155', fontWeight: 600, marginBottom: '0.3rem' }}>Email Address</label>
-              <input
-                type="email"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1', fontWeight: 500 }}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', color: '#334155', fontWeight: 600, marginBottom: '0.3rem' }}>New Password</label>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Attendance (%)
+                </label>
                 <input
-                  type="password"
-                  placeholder="Optional"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
+                  type="number"
+                  value={gradingSettings.attendanceWeight}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, attendanceWeight: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', color: '#334155', fontWeight: 600, marginBottom: '0.3rem' }}>Confirm Password</label>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Quizzes (%)
+                </label>
                 <input
-                  type="password"
-                  placeholder="Optional"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  style={{ width: '100%', padding: '0.65rem', borderRadius: '10px', background: '#ffffff', color: '#0f172a', border: '1.5px solid #cbd5e1' }}
+                  type="number"
+                  value={gradingSettings.quizWeight}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, quizWeight: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Activities (%)
+                </label>
+                <input
+                  type="number"
+                  value={gradingSettings.activityWeight}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, activityWeight: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Participation (%)
+                </label>
+                <input
+                  type="number"
+                  value={gradingSettings.participationWeight}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, participationWeight: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Major Exam (%)
+                </label>
+                <input
+                  type="number"
+                  value={gradingSettings.examWeight}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, examWeight: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Passing Threshold (%)
+                </label>
+                <input
+                  type="number"
+                  value={gradingSettings.passingGrade}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, passingGrade: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
                 />
               </div>
             </div>
+
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: '8px',
+                background: componentTotal === 100 ? '#f0fdf4' : '#fef2f2',
+                border: componentTotal === 100 ? '1px solid #86efac' : '1px solid #fecaca',
+                color: componentTotal === 100 ? '#15803d' : '#b91c1c',
+                fontSize: '0.84rem',
+                fontWeight: 700
+              }}
+            >
+              Total Period Raw Weight: {componentTotal}% (Attendance {gradingSettings.attendanceWeight}% + Quiz{' '}
+              {gradingSettings.quizWeight}% + Activity {gradingSettings.activityWeight}% + Participation{' '}
+              {gradingSettings.participationWeight}% + Exam {gradingSettings.examWeight}%)
+            </div>
           </div>
-        </section>
+        </article>
 
-        {/* 4. System Preferences */}
-        <section className="panel" style={{ padding: '1.6rem', background: '#ffffff', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.03)' }}>
-          <h4 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#0f172a', fontSize: '1.1rem' }}>
-            <Bell size={18} color="#d97706" /> System Preferences
-          </h4>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={automatedRiskAlerts}
-                onChange={(e) => setAutomatedRiskAlerts(e.target.checked)}
-                style={{ width: '18px', height: '18px' }}
-              />
+        {/* Cumulative 4-Period Formula */}
+        <article className="panel">
+          <div className="panel-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Calculator size={20} style={{ color: '#7c3aed' }} />
               <div>
-                <strong style={{ display: 'block', color: '#0f172a', fontSize: '0.92rem' }}>
-                  Automated At-Risk Notifications
-                </strong>
-                <small style={{ color: '#475569' }}>
-                  Automatically notify instructors and students when grade projections drop below passing.
-                </small>
+                <h2>Cumulative Grading Formula (Prelim → Final)</h2>
+                <p>40% Previous Period Grade + 60% Current Period Raw Grade</p>
               </div>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', cursor: 'pointer' }}>
-              <input type="checkbox" defaultChecked style={{ width: '18px', height: '18px' }} />
-              <div>
-                <strong style={{ display: 'block', color: '#0f172a', fontSize: '0.92rem' }}>
-                  Auto-compute Grade Sheet Totals
-                </strong>
-                <small style={{ color: '#475569' }}>
-                  Recalculate Prelim, Midterm, and Final weighted averages immediately upon score entry.
-                </small>
-              </div>
-            </label>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', cursor: 'pointer' }}>
-              <input type="checkbox" defaultChecked style={{ width: '18px', height: '18px' }} />
-              <div>
-                <strong style={{ display: 'block', color: '#0f172a', fontSize: '0.92rem' }}>
-                  Enable Real-time Activity Logging
-                </strong>
-                <small style={{ color: '#475569' }}>
-                  Save every grade modification and user update to the Activity Logs feed.
-                </small>
-              </div>
-            </label>
+            </div>
           </div>
-        </section>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Previous Period Carry-Over (%)
+                </label>
+                <input
+                  type="number"
+                  value={gradingSettings.previousPeriodWeight}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, previousPeriodWeight: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.8rem', color: '#475569', fontWeight: 600 }}>
+                  Current Period Raw Weight (%)
+                </label>
+                <input
+                  type="number"
+                  value={gradingSettings.currentPeriodRawWeight}
+                  onChange={(e) =>
+                    setGradingSettings({ ...gradingSettings, currentPeriodRawWeight: Number(e.target.value) })
+                  }
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                fontSize: '0.83rem',
+                color: '#334155',
+                lineHeight: 1.6
+              }}
+            >
+              <div>
+                • <strong>Prelim Grade</strong> = 100% Prelim Raw Grade
+              </div>
+              <div>
+                • <strong>Midterm Grade</strong> = Prelim ({gradingSettings.previousPeriodWeight}%) + Midterm Raw (
+                {gradingSettings.currentPeriodRawWeight}%)
+              </div>
+              <div>
+                • <strong>Pre-Final Grade</strong> = Midterm ({gradingSettings.previousPeriodWeight}%) + Pre-Final Raw (
+                {gradingSettings.currentPeriodRawWeight}%)
+              </div>
+              <div>
+                • <strong>Final Grade</strong> = Pre-Final ({gradingSettings.previousPeriodWeight}%) + Final Raw (
+                {gradingSettings.currentPeriodRawWeight}%)
+              </div>
+              <div style={{ marginTop: '6px', color: '#1d4ed8', fontWeight: 700 }}>
+                • Display Rounding: {gradingSettings.roundingMode}
+              </div>
+            </div>
+          </div>
+        </article>
+
+        {/* Workflow Notifications */}
+        <article className="panel">
+          <div className="panel-header">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Bell size={20} style={{ color: '#d97706' }} />
+              <div>
+                <h2>Workflow Notification Rules</h2>
+                <p>Automated triggers for Admin and Instructors</p>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+            {[
+              {
+                key: 'notifyAdminOnGradeSubmit',
+                title: 'Notify Admin on Grade Submission',
+                desc: 'Send notification to Admin when an instructor submits/uploads class grades'
+              },
+              {
+                key: 'notifyInstructorOnClassAssign',
+                title: 'Notify Instructor on Subject/Class Assignment',
+                desc: 'Alert instructor immediately when Admin assigns a subject class to them'
+              },
+              {
+                key: 'notifyInstructorOnStudentEnroll',
+                title: 'Notify Instructor on Student Enrollment',
+                desc: 'Alert instructor when students are added/enrolled in their subject class'
+              },
+              {
+                key: 'notifyInstructorOnStudentDropOut',
+                title: 'Notify Instructor on Student Drop Out',
+                desc: 'Alert instructor when an enrolled student drops out'
+              }
+            ].map((item) => (
+              <label
+                key={item.key}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 14px',
+                  background: '#f8fafc',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  cursor: 'pointer'
+                }}
+              >
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.88rem', color: '#0f172a' }}>
+                    {item.title}
+                  </strong>
+                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{item.desc}</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={Boolean(
+                    notificationSettings[item.key as keyof typeof notificationSettings]
+                  )}
+                  onChange={(e) =>
+                    setNotificationSettings((prev) => ({
+                      ...prev,
+                      [item.key]: e.target.checked
+                    }))
+                  }
+                  style={{ width: '18px', height: '18px', accentColor: '#2563eb' }}
+                />
+              </label>
+            ))}
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                padding: '10px 14px',
+                background: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                fontSize: '0.82rem',
+                color: '#15803d',
+                fontWeight: 600
+              }}
+            >
+              <Database size={16} />
+              <Shield size={16} />
+              <span>Connected to live Supabase PostgreSQL database (Zero mock data mode)</span>
+            </div>
+          </div>
+        </article>
       </div>
-    </form>
-  )
-}
+    </section>
+  );
+};
 
-export default AdminSettings
+export default AdminSettings;

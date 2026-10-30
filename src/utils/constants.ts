@@ -25,9 +25,9 @@ export type RoleNavItem = {
 }
 
 export const roleEmails: Record<Role, string> = {
-  administrator: 'admin@example.com',
-  instructor: 'instructor@example.com',
-  student: 'student1@example.com',
+  administrator: 'admin.test@example.com',
+  instructor: 'phantomlordtagamolila@gmail.com',
+  student: 'juan@gmail.com',
 }
 
 export type LandingFeature = {
@@ -45,12 +45,12 @@ export const landingFeatures: LandingFeature[] = [
   {
     title: 'Class record management',
     icon: FileText,
-    description: 'Instructors can encode quizzes, assignments, activities, midterms, and final exam scores.',
+    description: 'Instructors can encode attendance, quizzes, activities, participation, and exam scores.',
   },
   {
     title: 'Automatic computation',
     icon: Calculator,
-    description: 'Preliminary, midterm, final, and overall grades update as records are edited.',
+    description: 'Preliminary, midterm, pre-final, final, and cumulative grades update dynamically as records are encoded.',
   },
   {
     title: 'Predictive analytics',
@@ -65,7 +65,7 @@ export const landingFeatures: LandingFeature[] = [
   {
     title: 'Student portal',
     icon: ShieldCheck,
-    description: 'Students can securely view their profile, subjects, grades, final status, and prediction result.',
+    description: 'Students can securely view their profile, subjects, rounded grades, final status, and prediction result.',
   },
 ]
 
@@ -75,6 +75,7 @@ export const roleNavItems: Record<Role, RoleNavItem[]> = {
     { id: 'instructors', label: 'Instructors', icon: Users },
     { id: 'students', label: 'Students', icon: UserCheck },
     { id: 'classes', label: 'Subjects & Classes', icon: ClipboardList },
+    { id: 'grades', label: 'Grades', icon: Calculator },
     { id: 'predictive_analytics', label: 'Predictive Analytics', icon: TrendingUp },
     { id: 'reports', label: 'Reports', icon: FileText },
     { id: 'notifications', label: 'Notifications', icon: Bell },
