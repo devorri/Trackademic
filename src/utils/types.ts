@@ -256,6 +256,18 @@ export type TermComponentItems = {
   labActivity?: number[]
 }
 
+export type TermComponentMaxItems = {
+  attendance: number[]
+  attendanceTotal?: number
+  quiz: number[]
+  activity: number[]
+  participation: number[]
+  exam: number[]
+  labActivity?: number[]
+}
+
+export type ClassPeriodMaxItems = Record<GradingPeriodKey, TermComponentMaxItems>
+
 export type DetailedTermScores = {
   attendance: number
   quiz: number
@@ -268,6 +280,7 @@ export type DetailedTermScores = {
   termGrade: number
   hasData?: boolean
   items?: TermComponentItems
+  maxItems?: TermComponentMaxItems
   // Legacy compatibility
   quiz1?: number
   quiz2?: number

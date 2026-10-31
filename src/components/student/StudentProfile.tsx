@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { useData } from '../../context/DataContext'
-import { formatCourseSection } from '../../utils/helpers'
+import { formatCourseSection, formatYearLevel } from '../../utils/helpers'
 import { dbProfiles, dbStudents } from '../../utils/db'
 import { User, Mail, BookOpen, Key, Edit, Check, Hash, Calendar, GraduationCap } from 'lucide-react'
 
@@ -24,7 +24,11 @@ export const StudentProfile: React.FC = () => {
   const [name, setName] = useState(studentData?.name || activeUser?.name || 'Student')
   const [studentId, setStudentId] = useState(studentData?.student_no || studentData?.studentNo || 'N/A')
   const [program, setProgram] = useState(studentData?.course || 'BSIT')
-  const [year, setYear] = useState(`${studentData?.year_level || 1}`)
+  const [year, setYear] = useState(
+    studentData?.year
+      ? String(studentData.year)
+      : formatYearLevel(studentData?.year_level, studentData?.course),
+  )
   const [section, setSection] = useState(
     formatCourseSection(studentData?.course, studentData?.section_label),
   )
@@ -35,7 +39,11 @@ export const StudentProfile: React.FC = () => {
       setName(studentData.name || activeUser?.name || 'Student')
       setStudentId(studentData.student_no || studentData.studentNo || 'N/A')
       setProgram(studentData.course || 'BSIT')
-      setYear(`${studentData.year_level || 1}`)
+      setYear(
+        studentData.year
+          ? String(studentData.year)
+          : formatYearLevel(studentData.year_level, studentData.course),
+      )
       setSection(formatCourseSection(studentData.course, studentData.section_label))
       setEmail(studentData.email || activeUser?.email || '')
     }
@@ -215,7 +223,7 @@ export const StudentProfile: React.FC = () => {
               <Calendar size={15} color="#d97706" /> Year Level
             </span>
             <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#b45309', marginTop: '0.3rem' }}>
-              Year {year}
+              {formatYearLevel(year, program)}
             </div>
           </div>
 

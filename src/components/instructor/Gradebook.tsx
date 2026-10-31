@@ -6,7 +6,8 @@ import {
   getSubjectTitle,
   ensureTermScores,
   formatCourseSection,
-  isTermEncoded
+  isTermEncoded,
+  getDefaultTermMaxItems
 } from '../../utils/helpers';
 import {
   Save,
@@ -27,12 +28,15 @@ export const Gradebook: React.FC = () => {
     selectedClass,
     setSelectedClassId,
     detailedGradingSheets,
+    updateComponentMaxScore,
+    updateComponentTotalItems,
+    getClassPeriodMaxItems,
     updateComponentItemScore,
     addComponentColumn,
     removeComponentColumn,
     printClassGradeReport,
     submitClassGradesToAdmin,
-    addActivityLog
+    saveClassGradeDraft
   } = useData();
   const { activeUser } = useAuth();
 
@@ -93,14 +97,42 @@ export const Gradebook: React.FC = () => {
   const partCount = Math.max(1, sampleTerm.items?.participation?.length || 1);
   const examCount = Math.max(1, sampleTerm.items?.exam?.length || 1);
 
-  function handleManualSave() {
+  const periodMaxItems = activeClass
+    ? getClassPeriodMaxItems(activeClass.id, activePeriodKey, {
+        attendance: attCount,
+        quiz: quizCount,
+        activity: actCount,
+        participation: partCount,
+        exam: examCount
+      })
+    : getDefaultTermMaxItems({
+        attendance: attCount,
+        quiz: quizCount,
+        activity: actCount,
+        participation: partCount,
+        exam: examCount
+      });
+
+  const quizTotalItems = periodMaxItems.quiz
+    .slice(0, quizCount)
+    .reduce((a, b) => a + (b || 0), 0);
+  const actTotalItems = periodMaxItems.activity
+    .slice(0, actCount)
+    .reduce((a, b) => a + (b || 0), 0);
+  const partTotalItems = periodMaxItems.participation
+    .slice(0, partCount)
+    .reduce((a, b) => a + (b || 0), 0);
+  const examTotalItems = periodMaxItems.exam
+    .slice(0, examCount)
+    .reduce((a, b) => a + (b || 0), 0);
+  const attTotalItems =
+    periodMaxItems.attendanceTotal ??
+    periodMaxItems.attendance.slice(0, attCount).reduce((a, b) => a + (b || 0), 0);
+
+  async function handleManualSave() {
     if (!activeClass) return;
     setSaveSuccess(true);
-    addActivityLog(
-      activeUser?.name || 'Instructor',
-      `Saved Class Record Book for ${getSubjectTitle(subjects, activeClass.subject_id)}`,
-      'Gradebook'
-    );
+    await saveClassGradeDraft(activeClass.id, activeUser?.name || 'Instructor');
     setTimeout(() => setSaveSuccess(false), 3000);
   }
 
@@ -566,7 +598,7 @@ export const Gradebook: React.FC = () => {
               <thead>
                 <tr style={{ background: currentTheme.headerBg, color: '#ffffff' }}>
                   <th
-                    rowSpan={2}
+                    rowSpan={3}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -585,7 +617,7 @@ export const Gradebook: React.FC = () => {
 
                   {/* Attendance (10%) */}
                   <th
-                    colSpan={attCount + 1}
+                    colSpan={attCount + 2}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -600,7 +632,7 @@ export const Gradebook: React.FC = () => {
 
                   {/* Quizzes (20%) */}
                   <th
-                    colSpan={quizCount + 1}
+                    colSpan={quizCount + 2}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -615,7 +647,7 @@ export const Gradebook: React.FC = () => {
 
                   {/* Activities (20%) */}
                   <th
-                    colSpan={actCount + 1}
+                    colSpan={actCount + 2}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -630,7 +662,7 @@ export const Gradebook: React.FC = () => {
 
                   {/* Participation (10%) */}
                   <th
-                    colSpan={partCount + 1}
+                    colSpan={partCount + 2}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -649,7 +681,7 @@ export const Gradebook: React.FC = () => {
 
                   {/* Exam (40%) */}
                   <th
-                    colSpan={examCount + 1}
+                    colSpan={examCount + 2}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -664,7 +696,7 @@ export const Gradebook: React.FC = () => {
 
                   {/* Period Raw Grade */}
                   <th
-                    rowSpan={2}
+                    rowSpan={3}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -675,12 +707,46 @@ export const Gradebook: React.FC = () => {
                       minWidth: '82px'
                     }}
                   >
-                    RAW (100%)
+                    {activePeriodKey === 'prelim' ? 'RAW (100%)' : 'RAW (60%)'}
                   </th>
+
+                  {/* Previous Period Grade (Auto-synced from previous period) */}
+                  {activePeriodKey !== 'prelim' && (
+                    <th
+                      rowSpan={3}
+                      style={{
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        padding: '0.55rem',
+                        textAlign: 'center',
+                        background:
+                          activePeriodKey === 'midterm'
+                            ? '#1e3a8a'
+                            : activePeriodKey === 'prefinal'
+                            ? '#4c1d95'
+                            : '#7c2d12',
+                        border: '1px solid #334155',
+                        minWidth: '98px'
+                      }}
+                      title={`Automatically populated from ${
+                        activePeriodKey === 'midterm'
+                          ? 'Prelim'
+                          : activePeriodKey === 'prefinal'
+                          ? 'Midterm'
+                          : 'Pre-Final'
+                      } final grade`}
+                    >
+                      {activePeriodKey === 'midterm'
+                        ? 'PRELIM (40%)'
+                        : activePeriodKey === 'prefinal'
+                        ? 'MIDTERM (40%)'
+                        : 'PRE-FINAL (40%)'}
+                    </th>
+                  )}
 
                   {/* Cumulative Period Grade */}
                   <th
-                    rowSpan={2}
+                    rowSpan={3}
                     style={{
                       color: '#ffffff',
                       fontWeight: 900,
@@ -699,7 +765,7 @@ export const Gradebook: React.FC = () => {
 
                   {/* Rounded Overall */}
                   <th
-                    rowSpan={2}
+                    rowSpan={3}
                     style={{
                       color: '#ffffff',
                       fontWeight: 900,
@@ -714,7 +780,7 @@ export const Gradebook: React.FC = () => {
                   </th>
 
                   <th
-                    rowSpan={2}
+                    rowSpan={3}
                     style={{
                       color: '#ffffff',
                       fontWeight: 800,
@@ -747,6 +813,19 @@ export const Gradebook: React.FC = () => {
                   ))}
                   <th
                     style={{
+                      color: '#38bdf8',
+                      fontWeight: 900,
+                      padding: '0.45rem',
+                      textAlign: 'center',
+                      background: '#0f172a',
+                      border: '1px solid #334155'
+                    }}
+                    title="Total Attendance Score"
+                  >
+                    Total
+                  </th>
+                  <th
+                    style={{
                       color: '#fde047',
                       fontWeight: 900,
                       padding: '0.45rem',
@@ -754,6 +833,7 @@ export const Gradebook: React.FC = () => {
                       background: '#0f172a',
                       border: '1px solid #334155'
                     }}
+                    title="Attendance %"
                   >
                     Avg
                   </th>
@@ -774,6 +854,19 @@ export const Gradebook: React.FC = () => {
                   ))}
                   <th
                     style={{
+                      color: '#38bdf8',
+                      fontWeight: 900,
+                      padding: '0.45rem',
+                      textAlign: 'center',
+                      background: currentTheme.headerBg,
+                      border: '1px solid #334155'
+                    }}
+                    title="Total Quiz Score"
+                  >
+                    Total
+                  </th>
+                  <th
+                    style={{
                       color: '#fde047',
                       fontWeight: 900,
                       padding: '0.45rem',
@@ -781,6 +874,7 @@ export const Gradebook: React.FC = () => {
                       background: currentTheme.headerBg,
                       border: '1px solid #334155'
                     }}
+                    title="Quiz %"
                   >
                     Avg
                   </th>
@@ -801,6 +895,19 @@ export const Gradebook: React.FC = () => {
                   ))}
                   <th
                     style={{
+                      color: '#38bdf8',
+                      fontWeight: 900,
+                      padding: '0.45rem',
+                      textAlign: 'center',
+                      background: '#0f766e',
+                      border: '1px solid #334155'
+                    }}
+                    title="Total Activities Score"
+                  >
+                    Total
+                  </th>
+                  <th
+                    style={{
                       color: '#fde047',
                       fontWeight: 900,
                       padding: '0.45rem',
@@ -808,6 +915,7 @@ export const Gradebook: React.FC = () => {
                       background: '#0f766e',
                       border: '1px solid #334155'
                     }}
+                    title="Activities %"
                   >
                     Avg
                   </th>
@@ -828,6 +936,19 @@ export const Gradebook: React.FC = () => {
                   ))}
                   <th
                     style={{
+                      color: '#38bdf8',
+                      fontWeight: 900,
+                      padding: '0.45rem',
+                      textAlign: 'center',
+                      background: '#581c87',
+                      border: '1px solid #334155'
+                    }}
+                    title="Total Participation Score"
+                  >
+                    Total
+                  </th>
+                  <th
+                    style={{
                       color: '#fde047',
                       fontWeight: 900,
                       padding: '0.45rem',
@@ -835,6 +956,7 @@ export const Gradebook: React.FC = () => {
                       background: '#581c87',
                       border: '1px solid #334155'
                     }}
+                    title="Participation %"
                   >
                     Avg
                   </th>
@@ -855,6 +977,19 @@ export const Gradebook: React.FC = () => {
                   ))}
                   <th
                     style={{
+                      color: '#38bdf8',
+                      fontWeight: 900,
+                      padding: '0.45rem',
+                      textAlign: 'center',
+                      background: '#9a3412',
+                      border: '1px solid #334155'
+                    }}
+                    title="Total Exam Score"
+                  >
+                    Total
+                  </th>
+                  <th
+                    style={{
                       color: '#fde047',
                       fontWeight: 900,
                       padding: '0.45rem',
@@ -862,8 +997,526 @@ export const Gradebook: React.FC = () => {
                       background: '#9a3412',
                       border: '1px solid #334155'
                     }}
+                    title="Exam %"
                   >
                     Avg
+                  </th>
+                </tr>
+
+                {/* Total Items / Number of Items Row */}
+                <tr style={{ background: '#f8fafc', color: '#0f172a', borderBottom: '2px solid #cbd5e1' }}>
+                  <th
+                    style={{
+                      padding: '0.4rem 0.65rem',
+                      textAlign: 'left',
+                      background: '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      position: 'sticky',
+                      left: 0,
+                      zIndex: 2
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span
+                        style={{
+                          background: '#1e3a8a',
+                          color: '#ffffff',
+                          fontSize: '0.64rem',
+                          fontWeight: 900,
+                          padding: '0.15rem 0.4rem',
+                          borderRadius: '4px',
+                          letterSpacing: '0.04em'
+                        }}
+                      >
+                        ITEMS
+                      </span>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#334155' }}>
+                        No. of Items
+                      </span>
+                    </div>
+                  </th>
+
+                  {/* Attendance Items */}
+                  {Array.from({ length: attCount }).map((_, idx) => (
+                    <th
+                      key={`att-max-${idx}`}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #cbd5e1',
+                        background: '#f8fafc',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={periodMaxItems.attendance[idx] ?? 10}
+                        onChange={(e) =>
+                          activeClass &&
+                          updateComponentMaxScore(
+                            activeClass.id,
+                            activePeriodKey,
+                            'attendance',
+                            idx,
+                            Number(e.target.value) || 10
+                          )
+                        }
+                        title={`Number of items for Attendance ${idx + 1}`}
+                        style={{
+                          width: '46px',
+                          textAlign: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '0.2rem',
+                          borderRadius: '4px',
+                          border: '1.5px solid #94a3b8',
+                          background: '#ffffff',
+                          color: '#0f172a'
+                        }}
+                      />
+                    </th>
+                  ))}
+                  {/* Attendance Total Items (direct input by instructor) */}
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#f1f5f9',
+                      textAlign: 'center'
+                    }}
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={attTotalItems}
+                      onChange={(e) =>
+                        activeClass &&
+                        updateComponentTotalItems(
+                          activeClass.id,
+                          activePeriodKey,
+                          'attendance',
+                          Number(e.target.value) || 1
+                        )
+                      }
+                      title="Attendance Total Items (Directly editable)"
+                      style={{
+                        width: '48px',
+                        textAlign: 'center',
+                        fontSize: '0.78rem',
+                        fontWeight: 900,
+                        padding: '0.2rem',
+                        borderRadius: '4px',
+                        border: '2px solid #2563eb',
+                        background: '#eff6ff',
+                        color: '#1d4ed8'
+                      }}
+                    />
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#e2e8f0',
+                      color: '#475569',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    100%
+                  </th>
+
+                  {/* Quizzes Items (e input lang din) */}
+                  {Array.from({ length: quizCount }).map((_, idx) => (
+                    <th
+                      key={`qz-max-${idx}`}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #cbd5e1',
+                        background: '#f8fafc',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={periodMaxItems.quiz[idx] ?? 20}
+                        onChange={(e) =>
+                          activeClass &&
+                          updateComponentMaxScore(
+                            activeClass.id,
+                            activePeriodKey,
+                            'quiz',
+                            idx,
+                            Number(e.target.value) || 20
+                          )
+                        }
+                        title={`Number of items for Quiz ${idx + 1}`}
+                        style={{
+                          width: '46px',
+                          textAlign: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '0.2rem',
+                          borderRadius: '4px',
+                          border: '1.5px solid #94a3b8',
+                          background: '#ffffff',
+                          color: '#0f172a'
+                        }}
+                      />
+                    </th>
+                  ))}
+                  {/* Quizzes Total Items (automatic computation) */}
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#eff6ff',
+                      textAlign: 'center'
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.18rem 0.45rem',
+                        borderRadius: '5px',
+                        background: currentTheme.headerBg,
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        fontSize: '0.78rem',
+                        minWidth: '38px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                      }}
+                      title="Total Quiz Items (Automatically computed from sum of all quizzes)"
+                    >
+                      {quizTotalItems}
+                    </span>
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#e2e8f0',
+                      color: '#475569',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    100%
+                  </th>
+
+                  {/* Activities Items */}
+                  {Array.from({ length: actCount }).map((_, idx) => (
+                    <th
+                      key={`act-max-${idx}`}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #cbd5e1',
+                        background: '#f8fafc',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={periodMaxItems.activity[idx] ?? 50}
+                        onChange={(e) =>
+                          activeClass &&
+                          updateComponentMaxScore(
+                            activeClass.id,
+                            activePeriodKey,
+                            'activity',
+                            idx,
+                            Number(e.target.value) || 50
+                          )
+                        }
+                        title={`Number of items for Activity ${idx + 1}`}
+                        style={{
+                          width: '46px',
+                          textAlign: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '0.2rem',
+                          borderRadius: '4px',
+                          border: '1.5px solid #94a3b8',
+                          background: '#ffffff',
+                          color: '#0f172a'
+                        }}
+                      />
+                    </th>
+                  ))}
+                  {/* Activities Total Items (automatic computation) */}
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#f0fdfa',
+                      textAlign: 'center'
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.18rem 0.45rem',
+                        borderRadius: '5px',
+                        background: '#0f766e',
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        fontSize: '0.78rem',
+                        minWidth: '38px'
+                      }}
+                      title="Total Activity Items (Automatically computed)"
+                    >
+                      {actTotalItems}
+                    </span>
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#e2e8f0',
+                      color: '#475569',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    100%
+                  </th>
+
+                  {/* Participation Items */}
+                  {Array.from({ length: partCount }).map((_, idx) => (
+                    <th
+                      key={`part-max-${idx}`}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #cbd5e1',
+                        background: '#f8fafc',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={periodMaxItems.participation[idx] ?? 20}
+                        onChange={(e) =>
+                          activeClass &&
+                          updateComponentMaxScore(
+                            activeClass.id,
+                            activePeriodKey,
+                            'participation',
+                            idx,
+                            Number(e.target.value) || 20
+                          )
+                        }
+                        title={`Number of items for Participation ${idx + 1}`}
+                        style={{
+                          width: '46px',
+                          textAlign: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '0.2rem',
+                          borderRadius: '4px',
+                          border: '1.5px solid #94a3b8',
+                          background: '#ffffff',
+                          color: '#0f172a'
+                        }}
+                      />
+                    </th>
+                  ))}
+                  {/* Participation Total Items (automatic computation) */}
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#f3e8ff',
+                      textAlign: 'center'
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.18rem 0.45rem',
+                        borderRadius: '5px',
+                        background: '#581c87',
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        fontSize: '0.78rem',
+                        minWidth: '38px'
+                      }}
+                      title="Total Participation Items (Automatically computed)"
+                    >
+                      {partTotalItems}
+                    </span>
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#e2e8f0',
+                      color: '#475569',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    100%
+                  </th>
+
+                  {/* Exam Items */}
+                  {Array.from({ length: examCount }).map((_, idx) => (
+                    <th
+                      key={`ex-max-${idx}`}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #cbd5e1',
+                        background: '#f8fafc',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={periodMaxItems.exam[idx] ?? 100}
+                        onChange={(e) =>
+                          activeClass &&
+                          updateComponentMaxScore(
+                            activeClass.id,
+                            activePeriodKey,
+                            'exam',
+                            idx,
+                            Number(e.target.value) || 100
+                          )
+                        }
+                        title={`Number of items for Exam ${idx + 1}`}
+                        style={{
+                          width: '46px',
+                          textAlign: 'center',
+                          fontSize: '0.75rem',
+                          fontWeight: 800,
+                          padding: '0.2rem',
+                          borderRadius: '4px',
+                          border: '1.5px solid #94a3b8',
+                          background: '#ffffff',
+                          color: '#0f172a'
+                        }}
+                      />
+                    </th>
+                  ))}
+                  {/* Exam Total Items (automatic computation) */}
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#fff7ed',
+                      textAlign: 'center'
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '0.18rem 0.45rem',
+                        borderRadius: '5px',
+                        background: '#9a3412',
+                        color: '#ffffff',
+                        fontWeight: 900,
+                        fontSize: '0.78rem',
+                        minWidth: '38px'
+                      }}
+                      title="Total Exam Items (Automatically computed)"
+                    >
+                      {examTotalItems}
+                    </span>
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#e2e8f0',
+                      color: '#475569',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    100%
+                  </th>
+
+                  {/* Summary Benchmarks */}
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                      color: '#64748b',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    {activePeriodKey === 'prelim' ? '100%' : '60%'}
+                  </th>
+                  {activePeriodKey !== 'prelim' && (
+                    <th
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #cbd5e1',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontSize: '0.72rem',
+                        fontWeight: 900,
+                        textAlign: 'center'
+                      }}
+                      title="Auto-synced from previous period"
+                    >
+                      40%
+                    </th>
+                  )}
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: currentTheme.avgBg,
+                      color: currentTheme.accent,
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    100%
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#ecfdf5',
+                      color: '#047857',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    100%
+                  </th>
+                  <th
+                    style={{
+                      padding: '0.25rem',
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                      color: '#64748b',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      textAlign: 'center'
+                    }}
+                  >
+                    Target
                   </th>
                 </tr>
               </thead>
@@ -946,7 +1599,7 @@ export const Gradebook: React.FC = () => {
                               <input
                                 type="number"
                                 min={0}
-                                max={100}
+                                max={periodMaxItems.attendance[idx] ?? 100}
                                 placeholder="-"
                                 value={val === 0 && !hasEncodedPeriod ? '' : val}
                                 onChange={(e) =>
@@ -965,6 +1618,25 @@ export const Gradebook: React.FC = () => {
                             </td>
                           );
                         })}
+                        {/* Attendance Total */}
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            textAlign: 'center',
+                            fontWeight: 800,
+                            background: '#f8fafc',
+                            color: '#0f172a',
+                            borderRight: '1px solid #cbd5e1'
+                          }}
+                        >
+                          {hasEncodedPeriod ? (
+                            <span style={{ fontWeight: 800 }}>
+                              {items.attendance.slice(0, attCount).reduce((a, b) => a + (b || 0), 0)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td
                           style={{
                             padding: '0.4rem 0.5rem',
@@ -993,7 +1665,7 @@ export const Gradebook: React.FC = () => {
                               <input
                                 type="number"
                                 min={0}
-                                max={100}
+                                max={periodMaxItems.quiz[idx] ?? 100}
                                 placeholder="-"
                                 value={val === 0 && !hasEncodedPeriod ? '' : val}
                                 onChange={(e) =>
@@ -1012,6 +1684,34 @@ export const Gradebook: React.FC = () => {
                             </td>
                           );
                         })}
+                        {/* Quizzes Total (Automatic computation of student's total quiz score) */}
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            textAlign: 'center',
+                            fontWeight: 800,
+                            background: '#eff6ff',
+                            color: '#1e3a8a',
+                            borderRight: '1px solid #bfdbfe'
+                          }}
+                        >
+                          {hasEncodedPeriod ? (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                background: '#dbeafe',
+                                color: '#1e40af',
+                                fontWeight: 900
+                              }}
+                            >
+                              {items.quiz.slice(0, quizCount).reduce((a, b) => a + (b || 0), 0)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td
                           style={{
                             padding: '0.4rem 0.5rem',
@@ -1040,7 +1740,7 @@ export const Gradebook: React.FC = () => {
                               <input
                                 type="number"
                                 min={0}
-                                max={100}
+                                max={periodMaxItems.activity[idx] ?? 100}
                                 placeholder="-"
                                 value={val === 0 && !hasEncodedPeriod ? '' : val}
                                 onChange={(e) =>
@@ -1059,6 +1759,34 @@ export const Gradebook: React.FC = () => {
                             </td>
                           );
                         })}
+                        {/* Activities Total */}
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            textAlign: 'center',
+                            fontWeight: 800,
+                            background: '#f0fdfa',
+                            color: '#0f766e',
+                            borderRight: '1px solid #99f6e4'
+                          }}
+                        >
+                          {hasEncodedPeriod ? (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                background: '#ccfbf1',
+                                color: '#0f766e',
+                                fontWeight: 900
+                              }}
+                            >
+                              {items.activity.slice(0, actCount).reduce((a, b) => a + (b || 0), 0)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td
                           style={{
                             padding: '0.4rem 0.5rem',
@@ -1087,7 +1815,7 @@ export const Gradebook: React.FC = () => {
                               <input
                                 type="number"
                                 min={0}
-                                max={100}
+                                max={periodMaxItems.participation[idx] ?? 100}
                                 placeholder="-"
                                 value={val === 0 && !hasEncodedPeriod ? '' : val}
                                 onChange={(e) =>
@@ -1106,6 +1834,34 @@ export const Gradebook: React.FC = () => {
                             </td>
                           );
                         })}
+                        {/* Participation Total */}
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            textAlign: 'center',
+                            fontWeight: 800,
+                            background: '#faf5ff',
+                            color: '#6b21a8',
+                            borderRight: '1px solid #e9d5ff'
+                          }}
+                        >
+                          {hasEncodedPeriod ? (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                background: '#f3e8ff',
+                                color: '#6b21a8',
+                                fontWeight: 900
+                              }}
+                            >
+                              {items.participation.slice(0, partCount).reduce((a, b) => a + (b || 0), 0)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td
                           style={{
                             padding: '0.4rem 0.5rem',
@@ -1134,7 +1890,7 @@ export const Gradebook: React.FC = () => {
                               <input
                                 type="number"
                                 min={0}
-                                max={100}
+                                max={periodMaxItems.exam[idx] ?? 100}
                                 placeholder="-"
                                 value={val === 0 && !hasEncodedPeriod ? '' : val}
                                 onChange={(e) =>
@@ -1153,6 +1909,34 @@ export const Gradebook: React.FC = () => {
                             </td>
                           );
                         })}
+                        {/* Exam Total */}
+                        <td
+                          style={{
+                            padding: '0.4rem 0.5rem',
+                            textAlign: 'center',
+                            fontWeight: 800,
+                            background: '#fff7ed',
+                            color: '#9a3412',
+                            borderRight: '1px solid #fed7aa'
+                          }}
+                        >
+                          {hasEncodedPeriod ? (
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.15rem 0.45rem',
+                                borderRadius: '4px',
+                                background: '#ffedd5',
+                                color: '#9a3412',
+                                fontWeight: 900
+                              }}
+                            >
+                              {items.exam.slice(0, examCount).reduce((a, b) => a + (b || 0), 0)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
                         <td
                           style={{
                             padding: '0.4rem 0.5rem',
@@ -1180,6 +1964,60 @@ export const Gradebook: React.FC = () => {
                         >
                           {hasEncodedPeriod ? `${Math.round(termData.rawGrade || 0)}%` : '—'}
                         </td>
+
+                        {/* Previous Period Grade (Auto-synced from previous period) */}
+                        {activePeriodKey !== 'prelim' && (
+                          <td
+                            style={{
+                              padding: '0.5rem',
+                              textAlign: 'center',
+                              fontWeight: 800,
+                              fontSize: '0.88rem',
+                              background: '#eff6ff',
+                              color: '#1e40af',
+                              borderRight: '1px solid #bfdbfe'
+                            }}
+                          >
+                            {(() => {
+                              const prevTermObj =
+                                activePeriodKey === 'midterm'
+                                  ? row.prelim
+                                  : activePeriodKey === 'prefinal'
+                                  ? row.midterm
+                                  : row.prefinal || row.midterm;
+                              const isPrevEncoded = isTermEncoded(prevTermObj);
+                              if (!isPrevEncoded) return '—';
+                              const prevTermData = ensureTermScores(prevTermObj);
+                              const prevGradeVal = Math.round(
+                                prevTermData.computedTermGrade ||
+                                  prevTermData.termGrade ||
+                                  prevTermData.rawGrade ||
+                                  0
+                              );
+                              return (
+                                <span
+                                  style={{
+                                    display: 'inline-block',
+                                    padding: '0.15rem 0.45rem',
+                                    borderRadius: '4px',
+                                    background: '#dbeafe',
+                                    color: '#1d4ed8',
+                                    fontWeight: 900
+                                  }}
+                                  title={`Auto-synced ${
+                                    activePeriodKey === 'midterm'
+                                      ? 'Prelim'
+                                      : activePeriodKey === 'prefinal'
+                                      ? 'Midterm'
+                                      : 'Pre-Final'
+                                  } Grade`}
+                                >
+                                  {prevGradeVal}%
+                                </span>
+                              );
+                            })()}
+                          </td>
+                        )}
 
                         {/* Cumulative Period Grade */}
                         <td

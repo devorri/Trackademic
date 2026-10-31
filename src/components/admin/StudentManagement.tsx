@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
-import { formatCourseSection, getLetterGrade, isTermEncoded } from '../../utils/helpers';
+import { formatCourseSection, formatYearLevel, YEAR_LEVEL_GROUPS, getLetterGrade, isTermEncoded } from '../../utils/helpers';
 import type { StudentRecord } from '../../utils/types';
 
 export const StudentManagement: React.FC = () => {
@@ -37,7 +37,10 @@ export const StudentManagement: React.FC = () => {
 
   const [viewingStudent, setViewingStudent] = useState<StudentRecord | null>(null);
   const [sectionFilter, setSectionFilter] = useState<string>('ALL');
+  const [yearFilter, setYearFilter] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  const allYearOptions = useMemo(() => YEAR_LEVEL_GROUPS.flatMap((g) => g.options), []);
 
   // Collect all distinct Course & Section options dynamically from sections, classes, and students
   const courseSectionSuggestions = useMemo(() => {
@@ -77,6 +80,12 @@ export const StudentManagement: React.FC = () => {
       if (statusFilter !== 'ALL' && status !== statusFilter) {
         return false;
       }
+      if (yearFilter !== 'ALL') {
+        const yl = formatYearLevel(student.year || student.year_level, student.course);
+        if (yl.toLowerCase() !== yearFilter.toLowerCase()) {
+          return false;
+        }
+      }
       if (!query) return true;
       return (
         (student.name || '').toLowerCase().includes(query) ||
@@ -87,7 +96,7 @@ export const StudentManagement: React.FC = () => {
         student.id.toLowerCase().includes(query)
       );
     });
-  }, [students, studentQuery, sectionFilter, statusFilter]);
+  }, [students, studentQuery, sectionFilter, statusFilter, yearFilter]);
 
   return (
     <section className="content-section">
@@ -183,7 +192,7 @@ export const StudentManagement: React.FC = () => {
                 Year Level *
               </label>
               <select
-                value={studentForm.year}
+                value={studentForm.year || '1st Year'}
                 onChange={(e) => setStudentForm((cur) => ({ ...cur, year: e.target.value }))}
                 style={{
                   width: '100%',
@@ -192,13 +201,22 @@ export const StudentManagement: React.FC = () => {
                   border: '1.5px solid #cbd5e1',
                   borderRadius: '8px',
                   color: '#0f172a',
-                  fontSize: '0.95rem'
+                  fontSize: '0.95rem',
+                  fontWeight: 600
                 }}
               >
-                <option value="1st Year">1st Year</option>
-                <option value="2nd Year">2nd Year</option>
-                <option value="3rd Year">3rd Year</option>
-                <option value="4th Year">4th Year</option>
+                {studentForm.year && !allYearOptions.includes(String(studentForm.year)) && (
+                  <option value={String(studentForm.year)}>{String(studentForm.year)}</option>
+                )}
+                {YEAR_LEVEL_GROUPS.map((group) => (
+                  <optgroup key={group.category} label={group.category}>
+                    {group.options.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
 
@@ -322,6 +340,31 @@ export const StudentManagement: React.FC = () => {
             </div>
 
             <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#0f172a',
+                fontSize: '0.85rem',
+                fontWeight: 600
+              }}
+            >
+              <option value="ALL">All Year Levels</option>
+              {YEAR_LEVEL_GROUPS.map((group) => (
+                <optgroup key={group.category} label={group.category}>
+                  {group.options.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+
+            <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
               style={{
@@ -377,9 +420,19 @@ export const StudentManagement: React.FC = () => {
                       </span>
                     </td>
                     <td>
-                      {typeof student.year === 'number'
-                        ? `${student.year}${student.year === 1 ? 'st' : student.year === 2 ? 'nd' : student.year === 3 ? 'rd' : 'th'} Year`
-                        : student.year}
+                      <span
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '999px',
+                          background: '#f8fafc',
+                          border: '1px solid #e2e8f0',
+                          color: '#334155',
+                          fontWeight: 700,
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        {formatYearLevel(student.year || student.year_level, student.course)}
+                      </span>
                     </td>
                     <td>
                       <span

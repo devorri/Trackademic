@@ -6,17 +6,32 @@ import { LogOut } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   const { activeUser, handleLogout } = useAuth();
-  const { activeSection, setActiveSection, notifications } = useData();
+  const { activeSection, setActiveSection, notifications, students } = useData();
 
   if (!activeUser) return null;
 
-  const unreadCount = notifications.filter(
-    (n) =>
-      (n.role === activeUser.role || n.role === 'all') &&
-      (!n.user_id || n.user_id === activeUser.id) &&
-      !n.read &&
-      !n.is_read
-  ).length;
+  const currentStudent =
+    activeUser.role === 'student'
+      ? students.find(
+          (s) =>
+            s.profile_id === activeUser.id ||
+            s.id === activeUser.id ||
+            (activeUser.email && s.email?.toLowerCase() === activeUser.email.toLowerCase()),
+        )
+      : null;
+
+  const unreadCount = notifications.filter((n) => {
+    if (n.read || n.is_read) return false;
+    if (n.role !== activeUser.role && n.role !== 'all') return false;
+    if (!n.user_id) return true;
+    if (n.user_id === activeUser.id || n.user_id === activeUser.profile_id) return true;
+    if (
+      currentStudent &&
+      (n.user_id === currentStudent.id || n.user_id === currentStudent.profile_id)
+    )
+      return true;
+    return false;
+  }).length;
 
   const navItems = roleNavItems[activeUser.role] || [];
 

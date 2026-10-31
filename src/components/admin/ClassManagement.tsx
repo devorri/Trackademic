@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
 import type { ClassRecord } from '../../utils/types';
-import { getSubjectTitle, formatCourseSection } from '../../utils/helpers';
+import { getSubjectTitle, formatCourseSection, formatYearLevel } from '../../utils/helpers';
 import { dbInstructors, dbSections } from '../../utils/db';
 import {
   Plus,
@@ -1000,7 +1000,7 @@ export const ClassManagement: React.FC = () => {
                               color: '#0369a1'
                             }}
                           >
-                            {studentSec}
+                            {formatYearLevel(st.year || st.year_level, st.course)} • {studentSec}
                           </span>
                         </label>
                       );

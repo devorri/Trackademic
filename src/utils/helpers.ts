@@ -7,6 +7,7 @@ import type {
   DetailedTermScores,
   DetailedGradingSheet,
   TermComponentItems,
+  TermComponentMaxItems,
 } from './types'
 
 export function clampScore(value: string) {
@@ -68,6 +69,132 @@ export function normalizeCourseSection(
 
 export function formatCourseSection(course?: string, sectionLabel?: string): string {
   return normalizeCourseSection(course, sectionLabel).display
+}
+
+export type YearLevelOptionGroup = {
+  category: string
+  options: string[]
+}
+
+export const YEAR_LEVEL_GROUPS: YearLevelOptionGroup[] = [
+  {
+    category: 'College / Higher Education',
+    options: ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'],
+  },
+  {
+    category: 'Senior High School (SHS)',
+    options: ['Grade 11', 'Grade 12'],
+  },
+  {
+    category: 'Junior High School (JHS)',
+    options: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'],
+  },
+  {
+    category: '2-Year Technical / Vocational Course',
+    options: ['1st Year (2-Year Course)', '2nd Year (2-Year Course)'],
+  },
+]
+
+export function mapYearLevelToInt(yearValue?: string | number): number {
+  if (typeof yearValue === 'number' && !Number.isNaN(yearValue)) {
+    return Math.max(1, Math.min(6, Math.round(yearValue)))
+  }
+  if (!yearValue) return 1
+  const str = String(yearValue).trim()
+
+  // Match Grade 7..12
+  const gradeMatch = str.match(/grade\s*(\d+)/i)
+  if (gradeMatch) {
+    const g = parseInt(gradeMatch[1], 10)
+    if (g === 7) return 1
+    if (g === 8) return 2
+    if (g === 9) return 3
+    if (g === 10) return 4
+    if (g === 11) return 5
+    if (g === 12) return 6
+    return Math.max(1, Math.min(6, g))
+  }
+
+  // Match 2-year course
+  if (str.toLowerCase().includes('2-year')) {
+    if (/\b(?:2nd|second)\b/i.test(str) || /^\s*2/i.test(str)) return 2
+    return 1
+  }
+
+  // Match numeric ordinals
+  const numMatch = str.match(/(\d+)/)
+  if (numMatch) {
+    const n = parseInt(numMatch[1], 10)
+    if (n === 12) return 6
+    if (n === 11) return 5
+    if (n === 10) return 4
+    if (n === 9) return 3
+    if (n === 8) return 2
+    if (n === 7) return 1
+    return Math.max(1, Math.min(6, n))
+  }
+
+  return 1
+}
+
+export function formatYearLevel(yearValue?: string | number, course?: string): string {
+  const courseStr = (course || '').trim().toUpperCase()
+
+  // If yearValue is a non-empty string, check if it's already descriptive
+  if (typeof yearValue === 'string' && yearValue.trim()) {
+    const trimmed = yearValue.trim()
+    if (/^(grade\s*\d+|1st\s*year|2nd\s*year|3rd\s*year|4th\s*year|5th\s*year|6th\s*year)/i.test(trimmed)) {
+      return trimmed
+    }
+    if (/grade|jhs|shs|2-year|vocational/i.test(trimmed)) {
+      return trimmed
+    }
+    const parsed = parseInt(trimmed, 10)
+    if (!Number.isNaN(parsed) && parsed >= 7 && parsed <= 12) {
+      return `Grade ${parsed}`
+    }
+  }
+
+  // Infer from course if it has SHS or JHS indicators (e.g. "HUMMS 12 A", "STEM 12", "Grade 7")
+  if (courseStr) {
+    if (/\b(?:GRADE\s*12|HUMMS\s*12|STEM\s*12|ABM\s*12|GAS\s*12|TVL\s*12|12\s*[A-Z]?)\b/i.test(courseStr)) {
+      return 'Grade 12'
+    }
+    if (/\b(?:GRADE\s*11|HUMMS\s*11|STEM\s*11|ABM\s*11|GAS\s*11|TVL\s*11|11\s*[A-Z]?)\b/i.test(courseStr)) {
+      return 'Grade 11'
+    }
+    if (/\b(?:GRADE\s*10|JHS\s*10|10\s*[A-Z]?)\b/i.test(courseStr)) {
+      return 'Grade 10'
+    }
+    if (/\b(?:GRADE\s*9|JHS\s*9|9\s*[A-Z]?)\b/i.test(courseStr)) {
+      return 'Grade 9'
+    }
+    if (/\b(?:GRADE\s*8|JHS\s*8|8\s*[A-Z]?)\b/i.test(courseStr)) {
+      return 'Grade 8'
+    }
+    if (/\b(?:GRADE\s*7|JHS\s*7|7\s*[A-Z]?)\b/i.test(courseStr)) {
+      return 'Grade 7'
+    }
+    if (courseStr.includes('2-YEAR') || courseStr.includes('ACT') || courseStr.includes('ASSOCIATE')) {
+      const yl = typeof yearValue === 'number' ? yearValue : parseInt(String(yearValue || 1), 10) || 1
+      return `${yl === 2 ? '2nd' : '1st'} Year (2-Year Course)`
+    }
+    // College program with year & section (e.g. "BSIT 4A" -> 4th Year, "BSCS 3B" -> 3rd Year)
+    const collegeSecMatch = courseStr.match(/\b[A-Za-z]+\s*([1-6])\s*[A-Za-z]?\b/i)
+    if (collegeSecMatch && (!yearValue || yearValue === 1)) {
+      const num = parseInt(collegeSecMatch[1], 10)
+      const suffixes: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' }
+      return `${suffixes[num] || `${num}th`} Year`
+    }
+  }
+
+  const yl =
+    typeof yearValue === 'number' && !Number.isNaN(yearValue)
+      ? yearValue
+      : parseInt(String(yearValue || 1), 10) || 1
+
+  const suffixes: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' }
+  return `${suffixes[yl] || `${yl}th`} Year`
 }
 
 export function getSubjectTitle(subjects: Subject[], subjectId: string | number) {
@@ -293,6 +420,65 @@ export function computeItemsAverage(scores: number[]): number {
   return Number((sum / valid.length).toFixed(1))
 }
 
+/**
+ * Computes category total student score, total possible items, and percentage average:
+ * Average = (Total Student Score / Total Items) * 100
+ * Example: Q1(20) + Q2(20) + Q3(20) = 60 total items.
+ * Student gets 40 total -> Average = (40 / 60) * 100 = 66.7%
+ */
+export function computeCategoryTotalAndAvg(
+  scores: number[],
+  maxItems?: number[],
+  directTotalItems?: number,
+): { totalScore: number; totalItems: number; average: number } {
+  const safeScores = Array.isArray(scores) ? scores : []
+  const totalScore = safeScores.reduce(
+    (acc, s) => acc + (typeof s === 'number' && !Number.isNaN(s) ? s : 0),
+    0,
+  )
+
+  let totalItems = 0
+  if (typeof directTotalItems === 'number' && directTotalItems > 0) {
+    totalItems = directTotalItems
+  } else if (Array.isArray(maxItems) && maxItems.length > 0) {
+    totalItems = maxItems.reduce(
+      (acc, m) => acc + (typeof m === 'number' && !Number.isNaN(m) && m > 0 ? m : 100),
+      0,
+    )
+  } else {
+    totalItems = safeScores.length > 0 ? safeScores.length * 100 : 100
+  }
+
+  const average = totalItems > 0 ? Number(((totalScore / totalItems) * 100).toFixed(1)) : 0
+  return { totalScore, totalItems, average }
+}
+
+export function getDefaultTermMaxItems(counts?: {
+  attendance?: number
+  quiz?: number
+  activity?: number
+  participation?: number
+  exam?: number
+  labActivity?: number
+}): TermComponentMaxItems {
+  const attCount = Math.max(1, counts?.attendance ?? 2)
+  const quizCount = Math.max(1, counts?.quiz ?? 2)
+  const actCount = Math.max(1, counts?.activity ?? 2)
+  const partCount = Math.max(1, counts?.participation ?? 1)
+  const examCount = Math.max(1, counts?.exam ?? 1)
+  const labCount = counts?.labActivity ? Math.max(1, counts.labActivity) : 0
+
+  return {
+    attendance: Array(attCount).fill(10),
+    attendanceTotal: attCount * 10,
+    quiz: Array(quizCount).fill(20),
+    activity: Array(actCount).fill(50),
+    participation: Array(partCount).fill(20),
+    exam: Array(examCount).fill(100),
+    labActivity: labCount > 0 ? Array(labCount).fill(50) : [],
+  }
+}
+
 export function createEmptyTermScores(hasLaboratory: boolean = false): DetailedTermScores {
   return {
     attendance: 0,
@@ -313,6 +499,7 @@ export function createEmptyTermScores(hasLaboratory: boolean = false): DetailedT
       exam: [0],
       labActivity: hasLaboratory ? [0] : [],
     },
+    maxItems: getDefaultTermMaxItems({ labActivity: hasLaboratory ? 1 : 0 }),
     quiz1: 0,
     quiz2: 0,
     act1: 0,
@@ -359,6 +546,7 @@ export function ensureTermScores(
       termGrade: rawGrade,
       hasData: true,
       items,
+      maxItems: getDefaultTermMaxItems(),
       quiz1: val,
       quiz2: val,
       act1: val,
@@ -485,6 +673,7 @@ export function ensureTermScores(
     termGrade: computedVal,
     hasData: true,
     items,
+    maxItems: rawTerm?.maxItems || getDefaultTermMaxItems(),
     quiz1: items.quiz[0] ?? quiz,
     quiz2: items.quiz[1] ?? quiz,
     act1: items.activity[0] ?? activity,

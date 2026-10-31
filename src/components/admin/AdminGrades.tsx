@@ -1,6 +1,14 @@
 import React, { useState, useMemo } from 'react'
 import { useData } from '../../context/DataContext'
-import { getSubjectTitle, getGPAEquivalent, isTermEncoded, formatCourseSection } from '../../utils/helpers'
+import {
+  getSubjectTitle,
+  getGPAEquivalent,
+  isTermEncoded,
+  formatCourseSection,
+  formatYearLevel,
+  mapYearLevelToInt,
+  YEAR_LEVEL_GROUPS,
+} from '../../utils/helpers'
 import { Calculator, Lock, Printer, Search, User, BookOpen, GraduationCap, CheckCircle2, Clock } from 'lucide-react'
 
 export const AdminGrades: React.FC = () => {
@@ -44,17 +52,13 @@ export const AdminGrades: React.FC = () => {
         ) || cls.instructor
       const sectionName = cls.section?.name || 'BSIT 1A'
 
-      // Infer year level from section.year_level, enrolled students, or section name (e.g., "BSIT 4A" -> 4, "BSIT-1A" -> 1)
-      let yearLevel = cls.section?.year_level || 0
-      if (!yearLevel) {
-        const match = sectionName.match(/([1-6])/)
-        if (match) {
-          yearLevel = Number(match[1])
-        } else {
-          const firstEnrolled = students.find((s) => (cls.studentIds || []).includes(s.id))
-          yearLevel = firstEnrolled?.year_level || 1
-        }
-      }
+      // Resolve year level label from section.name, cls.section?.year_level, or enrolled students
+      const firstEnrolled = students.find((s) => (cls.studentIds || []).includes(s.id))
+      const yearLevelLabel = formatYearLevel(
+        cls.section?.year_level || firstEnrolled?.year || firstEnrolled?.year_level,
+        sectionName,
+      )
+      const yearLevelInt = mapYearLevelToInt(yearLevelLabel)
 
       const sheetRows = detailedGradingSheets[cls.id] || []
       const enrolledIds = Array.from(
@@ -90,7 +94,7 @@ export const AdminGrades: React.FC = () => {
           studentNo: st?.student_no || st?.studentNo || sr?.studentNo || 'N/A',
           studentName: st?.name || sr?.studentName || 'Student',
           courseSection: st ? formatCourseSection(st.course, st.section_label) : sectionName,
-          yearLevel: st?.year_level || yearLevel,
+          yearLevel: st?.year || formatYearLevel(st?.year_level || yearLevelInt, st?.course || sectionName),
           prelim,
           midterm,
           prefinal,
@@ -113,7 +117,8 @@ export const AdminGrades: React.FC = () => {
         instructorName: inst?.name || 'Unassigned Instructor',
         instructorEmail: inst?.email || '',
         sectionName,
-        yearLevel,
+        yearLevel: yearLevelLabel,
+        yearLevelInt,
         studentGradeRows,
         isSubmitted,
         submittedAt,
@@ -123,8 +128,12 @@ export const AdminGrades: React.FC = () => {
 
   const filteredClasses = useMemo(() => {
     return enrichedClasses.filter((item) => {
-      if (yearFilter !== 'all' && String(item.yearLevel) !== yearFilter) {
-        return false
+      if (yearFilter !== 'all') {
+        const itemYl = (item.yearLevel || '').toLowerCase()
+        const qYl = yearFilter.toLowerCase()
+        if (itemYl !== qYl && String(item.yearLevelInt) !== yearFilter) {
+          return false
+        }
       }
       if (sectionSearch.trim()) {
         const qSec = sectionSearch.trim().toLowerCase()
@@ -284,10 +293,15 @@ export const AdminGrades: React.FC = () => {
               }}
             >
               <option value="all">All Year Levels</option>
-              <option value="1">1st Year</option>
-              <option value="2">2nd Year</option>
-              <option value="3">3rd Year</option>
-              <option value="4">4th Year</option>
+              {YEAR_LEVEL_GROUPS.map((group) => (
+                <optgroup key={group.category} label={group.category}>
+                  {group.options.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
 
@@ -448,7 +462,7 @@ export const AdminGrades: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <GraduationCap size={14} color="#7c3aed" />
                     <span>
-                      <strong>Year & Section:</strong> Year {item.yearLevel} •{' '}
+                      <strong>Year & Section:</strong> {item.yearLevel} •{' '}
                       <strong style={{ color: '#0f172a' }}>{item.sectionName}</strong>
                     </span>
                   </div>
@@ -521,7 +535,7 @@ export const AdminGrades: React.FC = () => {
                     borderRadius: '6px',
                   }}
                 >
-                  Year {activeClassItem.yearLevel} • {activeClassItem.sectionName}
+                  {activeClassItem.yearLevel} • {activeClassItem.sectionName}
                 </span>
               </div>
               <h4 style={{ margin: '0.45rem 0 0.2rem 0', fontSize: '1.3rem', color: '#0f172a', fontWeight: 800 }}>
